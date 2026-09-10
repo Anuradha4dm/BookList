@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book List — Colour themes, pass 1 (navy &amp; mustard family)</title>
+<style>
+/* ============================================================================
+   BOOK LIST — COLOUR THEMES, PASS 1
+   Refinement inside the CHOSEN direction: deep navy + school-bag mustard.
+   Anchors inherited and never abandoned:
+     navy #0B1B33 · navy-raised #12294A · mustard #E8A61A · mustard-deep #C98A0E
+     cream #FFFBF2 · control-edge #8A7C61
+   NON-NEGOTIABLE: white on mustard #E8A61A = 2.1:1 and is BANNED. Mustard is a
+   background beneath navy text (7.3:1) or an accent/border. Never body text.
+   Every ratio printed in this document was computed with the WCAG 2.x relative
+   luminance formula at build time, not estimated.
+   Currency is UNCONFIRMED, so all money is bare grouped numerals (9,320).
+   ========================================================================== */
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#F1EDE4;color:#0B1B33;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:16px;line-height:1.5;font-variant-numeric:tabular-nums}
+h1,h2,h3,h4,h5{margin:0;font-weight:800;letter-spacing:-.015em;line-height:1.18}
+p{margin:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+.sheet{max-width:1560px;margin:0 auto;padding:26px 20px 80px}
+.doc-head{border-bottom:4px solid #0B1B33;padding-bottom:18px}
+.mark{display:inline-flex;align-items:center;gap:8px;background:#0B1B33;color:#E8A61A;
+  padding:7px 12px;border-radius:8px;font-weight:800;font-size:14px}
+.doc-head h1{font-size:31px;margin-top:14px}
+.doc-lede{margin-top:12px;max-width:96ch;font-size:15.5px;color:#3D4A5F}
+.doc-lede b{background:#FDF0D2;padding:0 3px;color:#0B1B33}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.legend span{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  background:#FFFFFF;border:2px solid #0B1B33;border-radius:99px;padding:5px 10px;box-shadow:2px 2px 0 #0B1B33}
+.var{margin-top:46px}
+.var-head{display:flex;align-items:flex-start;gap:14px;border-bottom:3px solid #0B1B33;padding-bottom:12px}
+.var-num{flex:0 0 auto;background:#0B1B33;color:#E8A61A;font-weight:800;font-size:15px;
+  border-radius:8px;padding:6px 11px;letter-spacing:.04em}
+.var-head h2{font-size:25px}
+.var-head .reg{font-size:14.5px;color:#3D4A5F;margin-top:6px;max-width:92ch}
+.pair{display:flex;gap:20px;flex-wrap:wrap;margin-top:18px;align-items:flex-start}
+.pane{flex:1 1 640px;min-width:340px;border:3px solid #0B1B33;border-radius:16px;overflow:hidden;
+  box-shadow:4px 4px 0 rgba(11,27,51,.22)}
+.pane-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:11.5px;font-weight:800;
+  letter-spacing:.12em;text-transform:uppercase}
+.pane-hd .sw2{width:14px;height:14px;border-radius:50%;border:2px solid currentColor}
+.pane-hd .hx{margin-left:auto;letter-spacing:.02em;font-size:11px;opacity:.85}
+.hd-l{background:#FFFBF2;color:#0B1B33;border-bottom:3px solid #0B1B33}
+.hd-d{background:#0B1B33;color:#E8A61A;border-bottom:3px solid #0B1B33}
+.pane-body{padding:16px 16px 20px}
+.blk{margin-top:20px}
+.blk:first-child{margin-top:0}
+.blk-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  padding-bottom:6px;margin-bottom:11px;border-bottom:2px solid var(--border-default);color:var(--text-secondary)}
+
+/* token chips */
+.tk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));gap:8px}
+.tk{display:flex;gap:9px;align-items:flex-start;border:2px solid var(--border-default);
+  border-radius:8px;padding:7px 8px;background:var(--surface-raised)}
+.tk .sw{flex:0 0 auto;width:34px;height:34px;border-radius:6px;border:2px solid var(--border-strong)}
+.tk .sw.ring{display:grid;place-items:center}
+.tk .sw.ring i{display:block;width:12px;height:12px;border-radius:3px;background:var(--surface-base)}
+.tk .m{min-width:0}
+.tk .r{display:block;font-size:11.5px;font-weight:800;letter-spacing:.02em;color:var(--text-primary)}
+.tk .h{display:block;font-size:11px;font-weight:700;color:var(--text-secondary);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin-top:1px}
+.tk .c{display:block;font-size:10.5px;font-weight:700;color:var(--text-secondary);margin-top:2px}
+.tk .c b{color:var(--text-primary)}
+.tk .c .ok{color:var(--success)}
+.tk .c .no{color:var(--danger)}
+
+/* pack screen snippet */
+.snip{background:var(--surface-base);border:2px solid var(--border-strong);border-radius:12px;padding:12px}
+.snip-top{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-secondary);margin-bottom:10px}
+.prow{display:grid;grid-template-columns:34px 1fr;gap:10px;background:var(--surface-raised);
+  border:2px solid var(--border-default);border-radius:10px;padding:9px 11px 11px;margin-bottom:9px}
+.prow.locked{border-color:var(--border-strong);border-width:3px;background:var(--accent-quiet)}
+.cb{width:26px;height:26px;border:3px solid var(--border-strong);border-radius:6px;
+  background:var(--accent-primary);display:grid;place-items:center;color:var(--text-on-accent)}
+.pname{font-size:14.5px;font-weight:700;line-height:1.3;color:var(--text-primary)}
+.pmeta{display:block;font-weight:600;font-size:12px;color:var(--text-secondary);margin-top:2px}
+.pfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;flex-wrap:wrap}
+.stp{display:inline-flex;align-items:stretch;border:2px solid var(--border-default);border-radius:8px;
+  overflow:hidden;background:var(--surface-raised)}
+.stp b{min-width:38px;min-height:38px;display:grid;place-items:center;font-size:19px;font-weight:800;
+  color:var(--text-primary);background:var(--surface-raised)}
+.stp b.off{background:var(--surface-sunken);color:var(--text-secondary)}
+.stp b:first-child{border-right:2px solid var(--border-default)}
+.stp b:last-child{border-left:2px solid var(--border-default)}
+.stp .q{min-width:42px;display:grid;place-items:center;font-weight:800;font-size:15px;
+  background:var(--accent-quiet);color:var(--text-primary)}
+.amt{font-weight:800;font-size:15.5px;white-space:nowrap;color:var(--text-primary);text-align:right}
+.amt small{display:block;font-weight:600;font-size:11px;color:var(--text-secondary)}
+.lockmsg{display:flex;gap:8px;align-items:flex-start;margin-top:9px;background:var(--surface-raised);
+  border:2px solid var(--border-strong);border-radius:8px;padding:8px 9px;font-size:12.5px;
+  font-weight:600;color:var(--text-primary)}
+.lockmsg svg{flex:0 0 auto;margin-top:1px}
+.pbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:4px;
+  background:var(--surface-sunken);border:2px solid var(--border-default);border-radius:10px;padding:10px 12px}
+.pbar .k{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary)}
+.pbar .v{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text-primary)}
+.cta{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:10px;
+  font-size:14.5px;font-weight:800;background:var(--accent-primary);color:var(--text-on-accent);
+  border:3px solid var(--border-strong);box-shadow:0 3px 0 var(--accent-primary-hover)}
+
+/* admin snippet */
+.grp-h{display:flex;align-items:center;gap:10px;border-bottom:3px solid var(--border-strong);
+  padding-bottom:7px;margin-bottom:9px}
+.grp-h h5{font-size:14.5px;color:var(--text-primary)}
+.grp-h .n{font-size:11px;font-weight:800;background:var(--accent-primary);color:var(--text-on-accent);
+  border-radius:99px;padding:2px 9px}
+.grp-h .t{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--text-secondary)}
+.orow{display:grid;grid-template-columns:66px 1fr auto;gap:11px;align-items:center;background:var(--surface-raised);
+  border:2px solid var(--border-default);border-radius:10px;padding:9px 11px;margin-bottom:8px}
+.orow.attn{border-color:var(--border-strong);border-left-width:7px}
+.oid{font-size:16px;font-weight:800;color:var(--text-primary)}
+.oid small{display:block;font-size:10.5px;font-weight:700;color:var(--text-secondary)}
+.onm{font-size:13.5px;font-weight:700;color:var(--text-primary)}
+.omt{font-size:11.5px;color:var(--text-secondary);margin-top:2px}
+.ocol{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+
+/* call chips: fill + stroke + glyph all differ */
+.call{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;
+  border-radius:8px;padding:5px 9px;border:2px solid;white-space:nowrap}
+.call.never{background:var(--surface-raised);border-color:var(--border-default);border-style:dashed;color:var(--text-secondary)}
+.call.tried{background:var(--warn-tint);border-color:var(--warning);color:var(--warning)}
+
+/* pipeline pills */
+.pipe{display:flex;flex-wrap:wrap;gap:8px}
+.pcell{flex:1 1 168px;min-width:158px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;
+  padding:5px 9px;border:2px solid;white-space:nowrap;max-width:100%}
+.pill .st{font-size:9.5px;font-weight:800;letter-spacing:.04em;border-radius:3px;padding:0 4px;
+  border:1.5px solid currentColor;opacity:.95}
+.pill.sh-pill{border-radius:99px}
+.pill.sh-rect{border-radius:6px}
+.pill.sh-square{border-radius:3px}
+.pill.term{border-radius:3px}
+.pill.dashed{border-style:dashed}
+.pill.strike .lb{text-decoration:line-through;text-decoration-thickness:2px}
+.pill.heavy{border-width:3px}
+.pmeasure{display:block;font-size:10px;font-weight:700;color:var(--text-secondary);margin-top:4px;line-height:1.35}
+.pmeasure code{font-size:9.5px}
+.note{margin-top:11px;font-size:12px;color:var(--text-secondary);border-left:3px solid var(--accent-primary);
+  padding-left:9px}
+.note b{color:var(--text-primary)}
+@media(max-width:820px){.sheet{padding:18px 12px 60px}.doc-head h1{font-size:25px}}
+
+/* ==========================================================================
+   VARIATION 01 — SATCHEL STANDARD
+   The anchor, held straight: warm cream paper, mustard doing structural work, and a dark mode that is true navy-black like a closed satchel.
+   ---- LIFTABLE TOKENS (light / dark) ------------------------------------
+   surface-base           #FFFBF2  /  #071426
+   surface-raised         #FFFFFF  /  #0F2440
+   surface-sunken         #F4EEE0  /  #030C18
+   text-primary           #0B1B33  /  #F2F6FC
+   text-secondary         #4A5A72  /  #A9BCD6
+   text-on-accent         #0B1B33  /  #0B1B33
+   border-default         #8A7C61  /  #5A7398
+   border-strong          #0B1B33  /  #8399BA
+   focus-ring             #1B3A66  /  #FFDA8A
+   focus-ring-offset      #FFFFFF  /  #071426
+   accent-primary         #E8A61A  /  #F0B434
+   accent-primary-hover   #C98A0E  /  #FFC751
+   accent-quiet           #FDF0D2  /  #33280C
+   danger                 #B3261E  /  #FF9B92
+   warning                #8A5A00  /  #F5C351
+   success                #146B45  /  #62D2A0
+   info                   #28558C  /  #8FC0FF
+   danger-tint            #FDECEA  /  #351512
+   warn-tint              #FFF3D6  /  #3B2A0B
+   success-tint           #E7F3ED  /  #0D3325
+   info-tint              #E7EEF8  /  #0B2C50
+   ---- PIPELINE STATUS HUES (std ramp) ----------------------------
+   1 Order Is Placed      dashed   L ink #4A4A4E tint #E5E5E7 edge #74747A solid #4A4A4E
+                                     D ink #C4C9D0 tint #33383F edge #8E949C solid #C4C9D0
+   2 Order Confirmed      tint     L ink #14477F tint #DBE8F8 edge #2E6BA8 solid #14477F
+                                     D ink #9CC8F8 tint #17416E edge #6C9BD0 solid #8FC0FF
+   3 Processing           tint     L ink #54388F tint #E4DCF7 edge #7357BC solid #4E3390
+                                     D ink #C3AEF5 tint #453380 edge #9584D0 solid #BBA6F2
+   4 Packing The Order    tint     L ink #8B2867 tint #F7DCEC edge #AE4489 solid #7C2460
+                                     D ink #F0A8D6 tint #6B2755 edge #C47AAB solid #F09AD0
+   5 Ready To Deliver     solid    L ink #0B1B33 tint #E8A61A edge #0B1B33 solid #E8A61A
+                                     D ink #0B1B33 tint #F0B434 edge #FFD98A solid #F0B434
+   6 On Delivery Partner  tint     L ink #0A5561 tint #CFEAEF edge #1A7F8F solid #0A5C6B
+                                     D ink #7ED6E4 tint #11454F edge #4FA0B2 solid #6FD0E2
+   7 Delivered            solid    L ink #0E5C3C tint #D2ECDD edge #1F8258 solid #0E5C3C
+                                     D ink #7BE0AE tint #12503A edge #4FA97C solid #6BDCA8
+   × Cancelled            strike   L ink #A81D14 tint #F8DEDB edge #CF3B31 solid #A81D14
+                                     D ink #FFA79E tint #6E2620 edge #C8756B solid #FF9A90
+   ========================================================================== */
+.v1-l{--surface-base:#FFFBF2;--surface-raised:#FFFFFF;--surface-sunken:#F4EEE0;--text-primary:#0B1B33;--text-secondary:#4A5A72;--text-on-accent:#0B1B33;--border-default:#8A7C61;--border-strong:#0B1B33;--focus-ring:#1B3A66;--accent-primary:#E8A61A;--accent-primary-hover:#C98A0E;--accent-quiet:#FDF0D2;--danger:#B3261E;--warning:#8A5A00;--success:#146B45;--info:#28558C;--warn-tint:#FFF3D6;background:#FFFBF2;color:#0B1B33}
+.v1-d{--surface-base:#071426;--surface-raised:#0F2440;--surface-sunken:#030C18;--text-primary:#F2F6FC;--text-secondary:#A9BCD6;--text-on-accent:#0B1B33;--border-default:#5A7398;--border-strong:#8399BA;--focus-ring:#FFDA8A;--accent-primary:#F0B434;--accent-primary-hover:#FFC751;--accent-quiet:#33280C;--danger:#FF9B92;--warning:#F5C351;--success:#62D2A0;--info:#8FC0FF;--warn-tint:#3B2A0B;background:#071426;color:#F2F6FC}
+/* ==========================================================================
+   VARIATION 02 — COOL LEDGER
+   Mustard put back in its box: cool grey-blue paper, colour reserved for the one row that needs action, and a desaturated slate dark that never glows.
+   ---- LIFTABLE TOKENS (light / dark) ------------------------------------
+   surface-base           #F4F6F9  /  #1A2230
+   surface-raised         #FFFFFF  /  #242E3E
+   surface-sunken         #E6EAF0  /  #131A25
+   text-primary           #101C2E  /  #E8EDF4
+   text-secondary         #4C5A6E  /  #A6B3C4
+   text-on-accent         #0B1B33  /  #0B1B33
+   border-default         #79879A  /  #6C7B92
+   border-strong          #33455E  /  #8D9BAF
+   focus-ring             #14345F  /  #F5D18C
+   focus-ring-offset      #FFFFFF  /  #131A25
+   accent-primary         #E8A61A  /  #E3A82C
+   accent-primary-hover   #C08308  /  #F2BC49
+   accent-quiet           #F3E7CC  /  #322B18
+   danger                 #B0231C  /  #FF9D94
+   warning                #855700  /  #EDC15C
+   success                #10664A  /  #5FCE9C
+   info                   #245C99  /  #93C2F5
+   danger-tint            #FBEAE8  /  #381916
+   warn-tint              #FBF1DA  /  #382C10
+   success-tint           #E5F1EC  /  #123529
+   info-tint              #E8EFF8  /  #182B41
+   ---- PIPELINE STATUS HUES (std ramp) ----------------------------
+   1 Order Is Placed      dashed   L ink #4A4A4E tint #E5E5E7 edge #74747A solid #4A4A4E
+                                     D ink #C4C9D0 tint #33383F edge #8E949C solid #C4C9D0
+   2 Order Confirmed      outline  L ink #14477F tint #DBE8F8 edge #2E6BA8 solid #14477F
+                                     D ink #9CC8F8 tint #17416E edge #6C9BD0 solid #8FC0FF
+   3 Processing           outline  L ink #54388F tint #E4DCF7 edge #7357BC solid #4E3390
+                                     D ink #C3AEF5 tint #453380 edge #9584D0 solid #BBA6F2
+   4 Packing The Order    outline  L ink #8B2867 tint #F7DCEC edge #AE4489 solid #7C2460
+                                     D ink #F0A8D6 tint #6B2755 edge #C47AAB solid #F09AD0
+   5 Ready To Deliver     solid    L ink #0B1B33 tint #E8A61A edge #0B1B33 solid #E8A61A
+                                     D ink #0B1B33 tint #F0B434 edge #FFD98A solid #F0B434
+   6 On Delivery Partner  outline  L ink #0A5561 tint #CFEAEF edge #1A7F8F solid #0A5C6B
+                                     D ink #7ED6E4 tint #11454F edge #4FA0B2 solid #6FD0E2
+   7 Delivered            solid    L ink #0E5C3C tint #D2ECDD edge #1F8258 solid #0E5C3C
+                                     D ink #7BE0AE tint #12503A edge #4FA97C solid #6BDCA8
+   × Cancelled            strike   L ink #A81D14 tint #F8DEDB edge #CF3B31 solid #A81D14
+                                     D ink #FFA79E tint #6E2620 edge #C8756B solid #FF9A90
+   ========================================================================== */
+.v2-l{--surface-base:#F4F6F9;--surface-raised:#FFFFFF;--surface-sunken:#E6EAF0;--text-primary:#101C2E;--text-secondary:#4C5A6E;--text-on-accent:#0B1B33;--border-default:#79879A;--border-strong:#33455E;--focus-ring:#14345F;--accent-primary:#E8A61A;--accent-primary-hover:#C08308;--accent-quiet:#F3E7CC;--danger:#B0231C;--warning:#855700;--success:#10664A;--info:#245C99;--warn-tint:#FBF1DA;background:#F4F6F9;color:#101C2E}
+.v2-d{--surface-base:#1A2230;--surface-raised:#242E3E;--surface-sunken:#131A25;--text-primary:#E8EDF4;--text-secondary:#A6B3C4;--text-on-accent:#0B1B33;--border-default:#6C7B92;--border-strong:#8D9BAF;--focus-ring:#F5D18C;--accent-primary:#E3A82C;--accent-primary-hover:#F2BC49;--accent-quiet:#322B18;--danger:#FF9D94;--warning:#EDC15C;--success:#5FCE9C;--info:#93C2F5;--warn-tint:#382C10;background:#1A2230;color:#E8EDF4}
+/* ==========================================================================
+   VARIATION 03 — CHALK & BRASS
+   Loud and unembarrassed: chalk-white light mode with mustard as a structural band, and an ink-black dark mode where every chip is polished brass.
+   ---- LIFTABLE TOKENS (light / dark) ------------------------------------
+   surface-base           #FFFFFF  /  #06090F
+   surface-raised         #FFFDF6  /  #121826
+   surface-sunken         #FBEBC6  /  #000205
+   text-primary           #08131F  /  #FFFFFF
+   text-secondary         #44526A  /  #B4C1D4
+   text-on-accent         #08131F  /  #06090F
+   border-default         #7A6A46  /  #5A6683
+   border-strong          #08131F  /  #97A5BC
+   focus-ring             #123A6E  /  #FFE59A
+   focus-ring-offset      #FFFFFF  /  #06090F
+   accent-primary         #E8A61A  /  #F5B32B
+   accent-primary-hover   #B87D08  /  #FFC94F
+   accent-quiet           #FBEBC6  /  #3A2C08
+   danger                 #A81D14  /  #FFA79E
+   warning                #7E5100  /  #FFCF5C
+   success                #0E5C3C  /  #6BDCA8
+   info                   #14477F  /  #9AC8FF
+   danger-tint            #FCE9E7  /  #3A1613
+   warn-tint              #FBEBC6  /  #43300A
+   success-tint           #E3F3EB  /  #0E3A28
+   info-tint              #E6EFFA  /  #122A45
+   ---- PIPELINE STATUS HUES (std ramp) ----------------------------
+   1 Order Is Placed      solid    L ink #4A4A4E tint #E5E5E7 edge #74747A solid #4A4A4E
+                                     D ink #C4C9D0 tint #33383F edge #8E949C solid #C4C9D0
+   2 Order Confirmed      solid    L ink #14477F tint #DBE8F8 edge #2E6BA8 solid #14477F
+                                     D ink #9CC8F8 tint #17416E edge #6C9BD0 solid #8FC0FF
+   3 Processing           solid    L ink #54388F tint #E4DCF7 edge #7357BC solid #4E3390
+                                     D ink #C3AEF5 tint #453380 edge #9584D0 solid #BBA6F2
+   4 Packing The Order    solid    L ink #8B2867 tint #F7DCEC edge #AE4489 solid #7C2460
+                                     D ink #F0A8D6 tint #6B2755 edge #C47AAB solid #F09AD0
+   5 Ready To Deliver     solid    L ink #0B1B33 tint #E8A61A edge #0B1B33 solid #E8A61A
+                                     D ink #0B1B33 tint #F0B434 edge #FFD98A solid #F0B434
+   6 On Delivery Partner  solid    L ink #0A5561 tint #CFEAEF edge #1A7F8F solid #0A5C6B
+                                     D ink #7ED6E4 tint #11454F edge #4FA0B2 solid #6FD0E2
+   7 Delivered            solid    L ink #0E5C3C tint #D2ECDD edge #1F8258 solid #0E5C3C
+                                     D ink #7BE0AE tint #12503A edge #4FA97C solid #6BDCA8
+   × Cancelled            solid    L ink #A81D14 tint #F8DEDB edge #CF3B31 solid #A81D14
+                                     D ink #FFA79E tint #6E2620 edge #C8756B solid #FF9A90
+   ========================================================================== */
+.v3-l{--surface-base:#FFFFFF;--surface-raised:#FFFDF6;--surface-sunken:#FBEBC6;--text-primary:#08131F;--text-secondary:#44526A;--text-on-accent:#08131F;--border-default:#7A6A46;--border-strong:#08131F;--focus-ring:#123A6E;--accent-primary:#E8A61A;--accent-primary-hover:#B87D08;--accent-quiet:#FBEBC6;--danger:#A81D14;--warning:#7E5100;--success:#0E5C3C;--info:#14477F;--warn-tint:#FBEBC6;background:#FFFFFF;color:#08131F}
+.v3-d{--surface-base:#06090F;--surface-raised:#121826;--surface-sunken:#000205;--text-primary:#FFFFFF;--text-secondary:#B4C1D4;--text-on-accent:#06090F;--border-default:#5A6683;--border-strong:#97A5BC;--focus-ring:#FFE59A;--accent-primary:#F5B32B;--accent-primary-hover:#FFC94F;--accent-quiet:#3A2C08;--danger:#FFA79E;--warning:#FFCF5C;--success:#6BDCA8;--info:#9AC8FF;--warn-tint:#43300A;background:#06090F;color:#FFFFFF}
+/* ==========================================================================
+   VARIATION 04 — EVENING PARCHMENT
+   Built for 9pm on the sofa: a dimmed warm parchment instead of glare, muted status tints, and a warm charcoal-navy dark that is the mode it was designed in.
+   ---- LIFTABLE TOKENS (light / dark) ------------------------------------
+   surface-base           #FAF3E4  /  #141B24
+   surface-raised         #FFFBF1  /  #1F2833
+   surface-sunken         #EFE5D0  /  #0D131A
+   text-primary           #1A2438  /  #F5EFE2
+   text-secondary         #54503F  /  #B0AB9B
+   text-on-accent         #1A2438  /  #141B24
+   border-default         #9C8C6E  /  #66707E
+   border-strong          #1A2438  /  #8A9280
+   focus-ring             #2A4A7A  /  #FBDE9C
+   focus-ring-offset      #FFFBF1  /  #0D131A
+   accent-primary         #DFA326  /  #E5AE3C
+   accent-primary-hover   #B7830F  /  #F6C258
+   accent-quiet           #F4E3BB  /  #2E2718
+   danger                 #9C3227  /  #F0A79C
+   warning                #7D5406  /  #EEC873
+   success                #1B5C42  /  #8FD3AE
+   info                   #2A5688  /  #A5C4E4
+   danger-tint            #F7E8E4  /  #301A17
+   warn-tint              #F7ECD4  /  #352A12
+   success-tint           #E7EFE8  /  #122E23
+   info-tint              #E9EEF5  /  #16263A
+   ---- PIPELINE STATUS HUES (muted ramp) ----------------------------
+   1 Order Is Placed      dashed   L ink #4A4C48 tint #E7E5DE edge #71736D solid #4A4C48
+                                     D ink #C9C9C4 tint #2E332F edge #90918C solid #C9C9C4
+   2 Order Confirmed      tint     L ink #1E4A78 tint #DDE5EE edge #3D6B95 solid #1E4A78
+                                     D ink #A5C4E4 tint #1E3A55 edge #7A9CBE solid #A5C4E4
+   3 Processing           tint     L ink #57408C tint #E4DCEC edge #75619F solid #57408C
+                                     D ink #C2B0E2 tint #383060 edge #9A8FBE solid #C2B0E2
+   4 Packing The Order    tint     L ink #7E3466 tint #EFDCE6 edge #A05787 solid #7E3466
+                                     D ink #E9AFD0 tint #5A3348 edge #BE8CA8 solid #E9AFD0
+   5 Ready To Deliver     solid    L ink #1A2438 tint #DFA326 edge #1A2438 solid #DFA326
+                                     D ink #141B24 tint #E5AE3C edge #F7CF7E solid #E5AE3C
+   6 On Delivery Partner  tint     L ink #14545F tint #D8E6E6 edge #2E7A85 solid #14545F
+                                     D ink #8CCBD4 tint #17444A edge #78AAB4 solid #8CCBD4
+   7 Delivered            solid    L ink #1B5C42 tint #DCE8DD edge #3A8261 solid #1B5C42
+                                     D ink #8FD3AE tint #1B4A38 edge #7CAE93 solid #8FD3AE
+   × Cancelled            strike   L ink #9C3227 tint #F0DCD6 edge #BC5347 solid #9C3227
+                                     D ink #F0A79C tint #5B2A24 edge #C4897E solid #F0A79C
+   ========================================================================== */
+.v4-l{--surface-base:#FAF3E4;--surface-raised:#FFFBF1;--surface-sunken:#EFE5D0;--text-primary:#1A2438;--text-secondary:#54503F;--text-on-accent:#1A2438;--border-default:#9C8C6E;--border-strong:#1A2438;--focus-ring:#2A4A7A;--accent-primary:#DFA326;--accent-primary-hover:#B7830F;--accent-quiet:#F4E3BB;--danger:#9C3227;--warning:#7D5406;--success:#1B5C42;--info:#2A5688;--warn-tint:#F7ECD4;background:#FAF3E4;color:#1A2438}
+.v4-d{--surface-base:#141B24;--surface-raised:#1F2833;--surface-sunken:#0D131A;--text-primary:#F5EFE2;--text-secondary:#B0AB9B;--text-on-accent:#141B24;--border-default:#66707E;--border-strong:#8A9280;--focus-ring:#FBDE9C;--accent-primary:#E5AE3C;--accent-primary-hover:#F6C258;--accent-quiet:#2E2718;--danger:#F0A79C;--warning:#EEC873;--success:#8FD3AE;--info:#A5C4E4;--warn-tint:#352A12;background:#141B24;color:#F5EFE2}
+</style>
+</head>
+<body>
+<div class="sheet">
+<header class="doc-head">
+  <span class="mark"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg> Book List</span>
+  <h1>Colour themes, pass 1 &mdash; four refinements of navy &amp; school-bag mustard</h1>
+  <p class="doc-lede">The direction is settled; this pass only argues about <b>register</b>. Each variation keeps navy
+  as the structural ink and mustard as the brand action, and changes three things: how warm the light surface is,
+  how much structural work mustard is allowed to do, and what the dark base actually is. <b>Light and dark sit side
+  by side</b> because parents order in the evening &mdash; dark is a peer, not an inversion. Every chip states its hex and
+  its measured contrast ratio against the surface it is intended to sit on.</p>
+  <div class="legend">
+    <span>WCAG 2.2 AA floor &middot; 4.5:1 text &middot; 3:1 UI</span>
+    <span>No JavaScript &middot; no network &middot; system fonts</span>
+    <span>White-on-mustard banned</span>
+    <span>Status = hue + glyph + weight + step number</span>
+    <span>Currency unconfirmed &middot; bare numerals</span>
+  </div>
+</header>
+<section class="var">
+  <div class="var-head"><span class="var-num">01</span>
+    <div><h2>Satchel Standard</h2><p class="reg">The anchor, held straight: warm cream paper, mustard doing structural work, and a dark mode that is true navy-black like a closed satchel.</p></div></div>
+  <div class="pair">
+    <section class="pane">
+  <div class="pane-hd hd-l"><span class="sw2" style="background:#FFFBF2"></span>
+    <span>Light mode</span><span class="hx">base #FFFBF2 &middot; raised #FFFFFF</span></div>
+  <div class="pane-body v1-l">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#FFFBF2"></span><span class="m"><span class="r">surface-base</span><span class="h">#FFFBF2</span><span class="c"><b>16.7:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">surface-raised</span><span class="h">#FFFFFF</span><span class="c"><b>17.2:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F4EEE0"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#F4EEE0</span><span class="c"><b>14.9:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">text-primary</span><span class="h">#0B1B33</span><span class="c"><b>16.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>17.2:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#4A5A72"></span><span class="m"><span class="r">text-secondary</span><span class="h">#4A5A72</span><span class="c"><b>6.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>7.0:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#0B1B33</span><span class="c"><b>8.1:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8A7C61"></span><span class="m"><span class="r">border-default</span><span class="h">#8A7C61</span><span class="c"><b>4.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>4.1:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">border-strong</span><span class="h">#0B1B33</span><span class="c"><b>16.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#FFFBF2;box-shadow:0 0 0 3px #1B3A66"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#1B3A66</span><span class="c"><b>11.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#FFFFFF</span><span class="c"><b>11.4:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E8A61A"></span><span class="m"><span class="r">accent-primary</span><span class="h">#E8A61A</span><span class="c"><b>8.1:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#C98A0E"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#C98A0E</span><span class="c"><b>5.8:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FDF0D2"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#FDF0D2</span><span class="c"><b>15.2:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B3261E"></span><span class="m"><span class="r">danger</span><span class="h">#B3261E</span><span class="c"><b>6.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8A5A00"></span><span class="m"><span class="r">warning</span><span class="h">#8A5A00</span><span class="c"><b>5.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#146B45"></span><span class="m"><span class="r">success</span><span class="h">#146B45</span><span class="c"><b>6.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#28558C"></span><span class="m"><span class="r">info</span><span class="h">#28558C</span><span class="c"><b>7.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FDECEA"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#FDECEA</span><span class="c"><b>5.7:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFF3D6"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#FFF3D6</span><span class="c"><b>5.4:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E7F3ED"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#E7F3ED</span><span class="c"><b>5.7:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E7EEF8"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#E7EEF8</span><span class="c"><b>6.5:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#E8A61A</code> is only <b>2.1:1</b> against <code>#FFFBF2</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #0B1B33</code>
+    (<b>16.7:1</b>) and carries <code>#0B1B33</code> text at <b>8.1:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#FFFBF2</code> and mustard <code>#E8A61A</code>. Core <code>#1B3A66</code> measures
+    <b>11.0:1</b> on the page and <b>5.4:1</b> on a mustard button;
+    halo <code>#FFFFFF</code> measures <b>2.1:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>5.4:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>7.0:1</b> on the raised row surface; the ticked box carries
+  <b>8.1:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-pill dashed" style="color:#4A4A4E;background:#FFFFFF;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#14477F;background:#DBE8F8;border-color:#2E6BA8"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#0A5561;background:#CFEAEF;border-color:#1A7F8F"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>7.0:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>5.4:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-pill dashed" style="color:#4A4A4E;background:#FFFFFF;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#4A4A4E</code> on <code>#FFFFFF</code> = <b>8.8:1</b> AA<br>edge <code>#74747A</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#14477F;background:#DBE8F8;border-color:#2E6BA8"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#14477F</code> on <code>#DBE8F8</code> = <b>7.6:1</b> AA<br>edge <code>#2E6BA8</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#54388F;background:#E4DCF7;border-color:#7357BC"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#54388F</code> on <code>#E4DCF7</code> = <b>6.8:1</b> AA<br>edge <code>#7357BC</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#8B2867;background:#F7DCEC;border-color:#AE4489"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#8B2867</code> on <code>#F7DCEC</code> = <b>6.3:1</b> AA<br>edge <code>#AE4489</code> 5.3:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill heavy" style="color:#0B1B33;background:#E8A61A;border-color:#0B1B33"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#E8A61A</code> = <b>8.1:1</b> AA<br>edge <code>#0B1B33</code> 17.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#0A5561;background:#CFEAEF;border-color:#1A7F8F"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#0A5561</code> on <code>#CFEAEF</code> = <b>6.7:1</b> AA<br>edge <code>#1A7F8F</code> 4.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill term" style="color:#FFFFFF;background:#0E5C3C;border-color:#1F8258"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#0E5C3C</code> = <b>8.0:1</b> AA<br>edge <code>#1F8258</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill dashed strike term" style="color:#A81D14;background:#FFFFFF;border-color:#CF3B31"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#A81D14</code> on <code>#FFFFFF</code> = <b>7.4:1</b> AA<br>edge <code>#CF3B31</code> 4.9:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+    <section class="pane">
+  <div class="pane-hd hd-d"><span class="sw2" style="background:#071426"></span>
+    <span>Dark mode</span><span class="hx">base #071426 &middot; raised #0F2440</span></div>
+  <div class="pane-body v1-d">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#071426"></span><span class="m"><span class="r">surface-base</span><span class="h">#071426</span><span class="c"><b>17.0:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0F2440"></span><span class="m"><span class="r">surface-raised</span><span class="h">#0F2440</span><span class="c"><b>14.4:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#030C18"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#030C18</span><span class="c"><b>18.1:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F2F6FC"></span><span class="m"><span class="r">text-primary</span><span class="h">#F2F6FC</span><span class="c"><b>17.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>14.4:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#A9BCD6"></span><span class="m"><span class="r">text-secondary</span><span class="h">#A9BCD6</span><span class="c"><b>9.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>8.1:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#0B1B33</span><span class="c"><b>9.3:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#5A7398"></span><span class="m"><span class="r">border-default</span><span class="h">#5A7398</span><span class="c"><b>3.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.2:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8399BA"></span><span class="m"><span class="r">border-strong</span><span class="h">#8399BA</span><span class="c"><b>6.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#071426;box-shadow:0 0 0 3px #FFDA8A"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#FFDA8A</span><span class="c"><b>13.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#071426"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#071426</span><span class="c"><b>13.8:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F0B434"></span><span class="m"><span class="r">accent-primary</span><span class="h">#F0B434</span><span class="c"><b>9.3:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFC751"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#FFC751</span><span class="c"><b>11.1:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#33280C"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#33280C</span><span class="c"><b>13.4:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FF9B92"></span><span class="m"><span class="r">danger</span><span class="h">#FF9B92</span><span class="c"><b>9.1:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F5C351"></span><span class="m"><span class="r">warning</span><span class="h">#F5C351</span><span class="c"><b>11.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#62D2A0"></span><span class="m"><span class="r">success</span><span class="h">#62D2A0</span><span class="c"><b>9.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8FC0FF"></span><span class="m"><span class="r">info</span><span class="h">#8FC0FF</span><span class="c"><b>9.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#351512"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#351512</span><span class="c"><b>8.2:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#3B2A0B"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#3B2A0B</span><span class="c"><b>8.4:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0D3325"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#0D3325</span><span class="c"><b>7.4:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B2C50"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#0B2C50</span><span class="c"><b>7.5:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#F0B434</code> is only <b>9.9:1</b> against <code>#071426</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #8399BA</code>
+    (<b>6.4:1</b>) and carries <code>#0B1B33</code> text at <b>9.3:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#071426</code> and mustard <code>#F0B434</code>. Core <code>#FFDA8A</code> measures
+    <b>13.8:1</b> on the page and <b>1.4:1</b> on a mustard button;
+    halo <code>#071426</code> measures <b>9.9:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>9.9:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>8.1:1</b> on the raised row surface; the ticked box carries
+  <b>9.3:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-pill dashed" style="color:#C4C9D0;background:#0F2440;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#9CC8F8;background:#17416E;border-color:#6C9BD0"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#7ED6E4;background:#11454F;border-color:#4FA0B2"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>8.1:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>8.4:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-pill dashed" style="color:#C4C9D0;background:#0F2440;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#C4C9D0</code> on <code>#0F2440</code> = <b>9.4:1</b> AA<br>edge <code>#8E949C</code> 5.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#9CC8F8;background:#17416E;border-color:#6C9BD0"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#9CC8F8</code> on <code>#17416E</code> = <b>6.0:1</b> AA<br>edge <code>#6C9BD0</code> 5.4:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#C3AEF5;background:#453380;border-color:#9584D0"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#C3AEF5</code> on <code>#453380</code> = <b>5.2:1</b> AA<br>edge <code>#9584D0</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#F0A8D6;background:#6B2755;border-color:#C47AAB"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#F0A8D6</code> on <code>#6B2755</code> = <b>5.5:1</b> AA<br>edge <code>#C47AAB</code> 5.0:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill heavy" style="color:#0B1B33;background:#F0B434;border-color:#FFD98A"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#F0B434</code> = <b>9.3:1</b> AA<br>edge <code>#FFD98A</code> 11.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#7ED6E4;background:#11454F;border-color:#4FA0B2"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#7ED6E4</code> on <code>#11454F</code> = <b>6.4:1</b> AA<br>edge <code>#4FA0B2</code> 5.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill term" style="color:#08131F;background:#6BDCA8;border-color:#4FA97C"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#08131F</code> on <code>#6BDCA8</code> = <b>11.1:1</b> AA<br>edge <code>#4FA97C</code> 5.4:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill dashed strike term" style="color:#FFA79E;background:#0F2440;border-color:#C8756B"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#FFA79E</code> on <code>#0F2440</code> = <b>8.4:1</b> AA<br>edge <code>#C8756B</code> 4.6:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+  </div>
+</section>
+<section class="var">
+  <div class="var-head"><span class="var-num">02</span>
+    <div><h2>Cool Ledger</h2><p class="reg">Mustard put back in its box: cool grey-blue paper, colour reserved for the one row that needs action, and a desaturated slate dark that never glows.</p></div></div>
+  <div class="pair">
+    <section class="pane">
+  <div class="pane-hd hd-l"><span class="sw2" style="background:#F4F6F9"></span>
+    <span>Light mode</span><span class="hx">base #F4F6F9 &middot; raised #FFFFFF</span></div>
+  <div class="pane-body v2-l">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#F4F6F9"></span><span class="m"><span class="r">surface-base</span><span class="h">#F4F6F9</span><span class="c"><b>15.8:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">surface-raised</span><span class="h">#FFFFFF</span><span class="c"><b>17.1:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E6EAF0"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#E6EAF0</span><span class="c"><b>14.2:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#101C2E"></span><span class="m"><span class="r">text-primary</span><span class="h">#101C2E</span><span class="c"><b>15.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>17.1:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#4C5A6E"></span><span class="m"><span class="r">text-secondary</span><span class="h">#4C5A6E</span><span class="c"><b>6.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>7.0:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#0B1B33</span><span class="c"><b>8.1:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#79879A"></span><span class="m"><span class="r">border-default</span><span class="h">#79879A</span><span class="c"><b>3.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.7:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#33455E"></span><span class="m"><span class="r">border-strong</span><span class="h">#33455E</span><span class="c"><b>9.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#F4F6F9;box-shadow:0 0 0 3px #14345F"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#14345F</span><span class="c"><b>11.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#FFFFFF</span><span class="c"><b>12.5:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E8A61A"></span><span class="m"><span class="r">accent-primary</span><span class="h">#E8A61A</span><span class="c"><b>8.1:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#C08308"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#C08308</span><span class="c"><b>5.3:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F3E7CC"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#F3E7CC</span><span class="c"><b>13.9:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B0231C"></span><span class="m"><span class="r">danger</span><span class="h">#B0231C</span><span class="c"><b>6.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#855700"></span><span class="m"><span class="r">warning</span><span class="h">#855700</span><span class="c"><b>5.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#10664A"></span><span class="m"><span class="r">success</span><span class="h">#10664A</span><span class="c"><b>6.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#245C99"></span><span class="m"><span class="r">info</span><span class="h">#245C99</span><span class="c"><b>6.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FBEAE8"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#FBEAE8</span><span class="c"><b>5.8:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FBF1DA"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#FBF1DA</span><span class="c"><b>5.6:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E5F1EC"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#E5F1EC</span><span class="c"><b>6.0:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E8EFF8"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#E8EFF8</span><span class="c"><b>5.9:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#E8A61A</code> is only <b>2.0:1</b> against <code>#F4F6F9</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #33455E</code>
+    (<b>9.0:1</b>) and carries <code>#0B1B33</code> text at <b>8.1:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#F4F6F9</code> and mustard <code>#E8A61A</code>. Core <code>#14345F</code> measures
+    <b>11.5:1</b> on the page and <b>5.9:1</b> on a mustard button;
+    halo <code>#FFFFFF</code> measures <b>2.1:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>5.9:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>7.0:1</b> on the raised row surface; the ticked box carries
+  <b>8.1:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-rect dashed" style="color:#4A4A4E;background:#FFFFFF;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#2E6BA8"><span class="st">2</span><span style="width:10px;height:10px;border-radius:2px;background:#14477F;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#1A7F8F"><span class="st">6</span><span style="width:10px;height:10px;border-radius:2px;background:#0A5561;flex:0 0 auto"></span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>7.0:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>5.6:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-rect dashed" style="color:#4A4A4E;background:#FFFFFF;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#4A4A4E</code> on <code>#FFFFFF</code> = <b>8.8:1</b> AA<br>edge <code>#74747A</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#2E6BA8"><span class="st">2</span><span style="width:10px;height:10px;border-radius:2px;background:#14477F;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#101C2E</code> on <code>#FFFFFF</code> = <b>17.1:1</b> AA<br>edge <code>#2E6BA8</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#7357BC"><span class="st">3</span><span style="width:10px;height:10px;border-radius:2px;background:#54388F;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#101C2E</code> on <code>#FFFFFF</code> = <b>17.1:1</b> AA<br>edge <code>#7357BC</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#AE4489"><span class="st">4</span><span style="width:10px;height:10px;border-radius:2px;background:#8B2867;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#101C2E</code> on <code>#FFFFFF</code> = <b>17.1:1</b> AA<br>edge <code>#AE4489</code> 5.3:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect heavy" style="color:#0B1B33;background:#E8A61A;border-color:#0B1B33"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#E8A61A</code> = <b>8.1:1</b> AA<br>edge <code>#0B1B33</code> 17.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#101C2E;background:#FFFFFF;border-color:#1A7F8F"><span class="st">6</span><span style="width:10px;height:10px;border-radius:2px;background:#0A5561;flex:0 0 auto"></span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#101C2E</code> on <code>#FFFFFF</code> = <b>17.1:1</b> AA<br>edge <code>#1A7F8F</code> 4.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect term" style="color:#FFFFFF;background:#0E5C3C;border-color:#1F8258"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#0E5C3C</code> = <b>8.0:1</b> AA<br>edge <code>#1F8258</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect dashed strike term" style="color:#A81D14;background:#FFFFFF;border-color:#CF3B31"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#A81D14</code> on <code>#FFFFFF</code> = <b>7.4:1</b> AA<br>edge <code>#CF3B31</code> 4.9:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+    <section class="pane">
+  <div class="pane-hd hd-d"><span class="sw2" style="background:#1A2230"></span>
+    <span>Dark mode</span><span class="hx">base #1A2230 &middot; raised #242E3E</span></div>
+  <div class="pane-body v2-d">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#1A2230"></span><span class="m"><span class="r">surface-base</span><span class="h">#1A2230</span><span class="c"><b>13.6:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#242E3E"></span><span class="m"><span class="r">surface-raised</span><span class="h">#242E3E</span><span class="c"><b>11.6:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#131A25"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#131A25</span><span class="c"><b>14.8:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E8EDF4"></span><span class="m"><span class="r">text-primary</span><span class="h">#E8EDF4</span><span class="c"><b>13.6:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>11.6:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#A6B3C4"></span><span class="m"><span class="r">text-secondary</span><span class="h">#A6B3C4</span><span class="c"><b>7.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>6.4:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0B1B33"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#0B1B33</span><span class="c"><b>8.1:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#6C7B92"></span><span class="m"><span class="r">border-default</span><span class="h">#6C7B92</span><span class="c"><b>3.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.2:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8D9BAF"></span><span class="m"><span class="r">border-strong</span><span class="h">#8D9BAF</span><span class="c"><b>5.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#1A2230;box-shadow:0 0 0 3px #F5D18C"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#F5D18C</span><span class="c"><b>10.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#131A25"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#131A25</span><span class="c"><b>12.0:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E3A82C"></span><span class="m"><span class="r">accent-primary</span><span class="h">#E3A82C</span><span class="c"><b>8.1:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F2BC49"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#F2BC49</span><span class="c"><b>9.9:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#322B18"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#322B18</span><span class="c"><b>11.9:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FF9D94"></span><span class="m"><span class="r">danger</span><span class="h">#FF9D94</span><span class="c"><b>8.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#EDC15C"></span><span class="m"><span class="r">warning</span><span class="h">#EDC15C</span><span class="c"><b>9.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#5FCE9C"></span><span class="m"><span class="r">success</span><span class="h">#5FCE9C</span><span class="c"><b>8.2:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#93C2F5"></span><span class="m"><span class="r">info</span><span class="h">#93C2F5</span><span class="c"><b>8.6:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#381916"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#381916</span><span class="c"><b>8.0:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#382C10"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#382C10</span><span class="c"><b>8.1:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#123529"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#123529</span><span class="c"><b>6.9:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#182B41"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#182B41</span><span class="c"><b>7.7:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#E3A82C</code> is only <b>7.5:1</b> against <code>#1A2230</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #8D9BAF</code>
+    (<b>5.7:1</b>) and carries <code>#0B1B33</code> text at <b>8.1:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#1A2230</code> and mustard <code>#E3A82C</code>. Core <code>#F5D18C</code> measures
+    <b>10.9:1</b> on the page and <b>1.5:1</b> on a mustard button;
+    halo <code>#131A25</code> measures <b>8.2:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>8.2:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>6.4:1</b> on the raised row surface; the ticked box carries
+  <b>8.1:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-rect dashed" style="color:#C4C9D0;background:#242E3E;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#6C9BD0"><span class="st">2</span><span style="width:10px;height:10px;border-radius:2px;background:#9CC8F8;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#4FA0B2"><span class="st">6</span><span style="width:10px;height:10px;border-radius:2px;background:#7ED6E4;flex:0 0 auto"></span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>6.4:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>8.1:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-rect dashed" style="color:#C4C9D0;background:#242E3E;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#C4C9D0</code> on <code>#242E3E</code> = <b>8.2:1</b> AA<br>edge <code>#8E949C</code> 4.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#6C9BD0"><span class="st">2</span><span style="width:10px;height:10px;border-radius:2px;background:#9CC8F8;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#E8EDF4</code> on <code>#242E3E</code> = <b>11.6:1</b> AA<br>edge <code>#6C9BD0</code> 4.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#9584D0"><span class="st">3</span><span style="width:10px;height:10px;border-radius:2px;background:#C3AEF5;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#E8EDF4</code> on <code>#242E3E</code> = <b>11.6:1</b> AA<br>edge <code>#9584D0</code> 4.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#C47AAB"><span class="st">4</span><span style="width:10px;height:10px;border-radius:2px;background:#F0A8D6;flex:0 0 auto"></span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#E8EDF4</code> on <code>#242E3E</code> = <b>11.6:1</b> AA<br>edge <code>#C47AAB</code> 4.4:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect heavy" style="color:#0B1B33;background:#F0B434;border-color:#FFD98A"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#F0B434</code> = <b>9.3:1</b> AA<br>edge <code>#FFD98A</code> 10.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect" style="color:#E8EDF4;background:#242E3E;border-color:#4FA0B2"><span class="st">6</span><span style="width:10px;height:10px;border-radius:2px;background:#7ED6E4;flex:0 0 auto"></span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#E8EDF4</code> on <code>#242E3E</code> = <b>11.6:1</b> AA<br>edge <code>#4FA0B2</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect term" style="color:#08131F;background:#6BDCA8;border-color:#4FA97C"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#08131F</code> on <code>#6BDCA8</code> = <b>11.1:1</b> AA<br>edge <code>#4FA97C</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-rect dashed strike term" style="color:#FFA79E;background:#242E3E;border-color:#C8756B"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#FFA79E</code> on <code>#242E3E</code> = <b>7.3:1</b> AA<br>edge <code>#C8756B</code> 4.0:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+  </div>
+</section>
+<section class="var">
+  <div class="var-head"><span class="var-num">03</span>
+    <div><h2>Chalk & Brass</h2><p class="reg">Loud and unembarrassed: chalk-white light mode with mustard as a structural band, and an ink-black dark mode where every chip is polished brass.</p></div></div>
+  <div class="pair">
+    <section class="pane">
+  <div class="pane-hd hd-l"><span class="sw2" style="background:#FFFFFF"></span>
+    <span>Light mode</span><span class="hx">base #FFFFFF &middot; raised #FFFDF6</span></div>
+  <div class="pane-body v3-l">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">surface-base</span><span class="h">#FFFFFF</span><span class="c"><b>18.7:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFDF6"></span><span class="m"><span class="r">surface-raised</span><span class="h">#FFFDF6</span><span class="c"><b>18.4:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FBEBC6"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#FBEBC6</span><span class="c"><b>15.8:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#08131F"></span><span class="m"><span class="r">text-primary</span><span class="h">#08131F</span><span class="c"><b>18.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>18.4:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#44526A"></span><span class="m"><span class="r">text-secondary</span><span class="h">#44526A</span><span class="c"><b>7.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>7.8:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#08131F"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#08131F</span><span class="c"><b>8.8:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#7A6A46"></span><span class="m"><span class="r">border-default</span><span class="h">#7A6A46</span><span class="c"><b>5.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>5.2:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#08131F"></span><span class="m"><span class="r">border-strong</span><span class="h">#08131F</span><span class="c"><b>18.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#FFFFFF;box-shadow:0 0 0 3px #123A6E"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#123A6E</span><span class="c"><b>11.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#FFFFFF</span><span class="c"><b>11.3:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E8A61A"></span><span class="m"><span class="r">accent-primary</span><span class="h">#E8A61A</span><span class="c"><b>8.8:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B87D08"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#B87D08</span><span class="c"><b>5.3:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FBEBC6"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#FBEBC6</span><span class="c"><b>15.8:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#A81D14"></span><span class="m"><span class="r">danger</span><span class="h">#A81D14</span><span class="c"><b>7.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#7E5100"></span><span class="m"><span class="r">warning</span><span class="h">#7E5100</span><span class="c"><b>6.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0E5C3C"></span><span class="m"><span class="r">success</span><span class="h">#0E5C3C</span><span class="c"><b>8.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#14477F"></span><span class="m"><span class="r">info</span><span class="h">#14477F</span><span class="c"><b>9.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FCE9E7"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#FCE9E7</span><span class="c"><b>6.3:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FBEBC6"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#FBEBC6</span><span class="c"><b>5.8:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E3F3EB"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#E3F3EB</span><span class="c"><b>7.0:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E6EFFA"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#E6EFFA</span><span class="c"><b>8.1:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#E8A61A</code> is only <b>2.1:1</b> against <code>#FFFFFF</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #08131F</code>
+    (<b>18.7:1</b>) and carries <code>#08131F</code> text at <b>8.8:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#FFFFFF</code> and mustard <code>#E8A61A</code>. Core <code>#123A6E</code> measures
+    <b>11.3:1</b> on the page and <b>5.3:1</b> on a mustard button;
+    halo <code>#FFFFFF</code> measures <b>2.1:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>5.3:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>7.8:1</b> on the raised row surface; the ticked box carries
+  <b>8.8:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#FFFFFF;background:#4A4A4E;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#FFFFFF;background:#14477F;border-color:#2E6BA8"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#FFFFFF;background:#0A5C6B;border-color:#1A7F8F"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>7.8:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>5.8:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#4A4A4E;border-color:#74747A"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#4A4A4E</code> = <b>8.8:1</b> AA<br>edge <code>#74747A</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#14477F;border-color:#2E6BA8"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#14477F</code> = <b>9.4:1</b> AA<br>edge <code>#2E6BA8</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#4E3390;border-color:#7357BC"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#4E3390</code> = <b>9.5:1</b> AA<br>edge <code>#7357BC</code> 5.4:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#7C2460;border-color:#AE4489"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#7C2460</code> = <b>9.2:1</b> AA<br>edge <code>#AE4489</code> 5.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square heavy" style="color:#0B1B33;background:#E8A61A;border-color:#0B1B33"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#E8A61A</code> = <b>8.1:1</b> AA<br>edge <code>#0B1B33</code> 16.9:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#0A5C6B;border-color:#1A7F8F"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#0A5C6B</code> = <b>7.6:1</b> AA<br>edge <code>#1A7F8F</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square term" style="color:#FFFFFF;background:#0E5C3C;border-color:#1F8258"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#0E5C3C</code> = <b>8.0:1</b> AA<br>edge <code>#1F8258</code> 4.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#FFFFFF;background:#A81D14;border-color:#CF3B31"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#A81D14</code> = <b>7.4:1</b> AA<br>edge <code>#CF3B31</code> 4.8:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+    <section class="pane">
+  <div class="pane-hd hd-d"><span class="sw2" style="background:#06090F"></span>
+    <span>Dark mode</span><span class="hx">base #06090F &middot; raised #121826</span></div>
+  <div class="pane-body v3-d">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#06090F"></span><span class="m"><span class="r">surface-base</span><span class="h">#06090F</span><span class="c"><b>19.9:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#121826"></span><span class="m"><span class="r">surface-raised</span><span class="h">#121826</span><span class="c"><b>17.7:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#000205"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#000205</span><span class="c"><b>20.8:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFFFF"></span><span class="m"><span class="r">text-primary</span><span class="h">#FFFFFF</span><span class="c"><b>19.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>17.7:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B4C1D4"></span><span class="m"><span class="r">text-secondary</span><span class="h">#B4C1D4</span><span class="c"><b>10.9:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>9.7:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#06090F"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#06090F</span><span class="c"><b>10.8:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#5A6683"></span><span class="m"><span class="r">border-default</span><span class="h">#5A6683</span><span class="c"><b>3.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.1:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#97A5BC"></span><span class="m"><span class="r">border-strong</span><span class="h">#97A5BC</span><span class="c"><b>8.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#06090F;box-shadow:0 0 0 3px #FFE59A"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#FFE59A</span><span class="c"><b>16.1:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#06090F"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#06090F</span><span class="c"><b>16.1:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F5B32B"></span><span class="m"><span class="r">accent-primary</span><span class="h">#F5B32B</span><span class="c"><b>10.8:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFC94F"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#FFC94F</span><span class="c"><b>13.0:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#3A2C08"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#3A2C08</span><span class="c"><b>13.6:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFA79E"></span><span class="m"><span class="r">danger</span><span class="h">#FFA79E</span><span class="c"><b>10.7:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFCF5C"></span><span class="m"><span class="r">warning</span><span class="h">#FFCF5C</span><span class="c"><b>13.6:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#6BDCA8"></span><span class="m"><span class="r">success</span><span class="h">#6BDCA8</span><span class="c"><b>11.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#9AC8FF"></span><span class="m"><span class="r">info</span><span class="h">#9AC8FF</span><span class="c"><b>11.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#3A1613"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#3A1613</span><span class="c"><b>8.6:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#43300A"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#43300A</span><span class="c"><b>8.6:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0E3A28"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#0E3A28</span><span class="c"><b>7.5:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#122A45"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#122A45</span><span class="c"><b>8.4:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#F5B32B</code> is only <b>10.8:1</b> against <code>#06090F</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #97A5BC</code>
+    (<b>8.0:1</b>) and carries <code>#06090F</code> text at <b>10.8:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#06090F</code> and mustard <code>#F5B32B</code>. Core <code>#FFE59A</code> measures
+    <b>16.1:1</b> on the page and <b>1.5:1</b> on a mustard button;
+    halo <code>#06090F</code> measures <b>10.8:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>10.8:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>9.7:1</b> on the raised row surface; the ticked box carries
+  <b>10.8:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#08131F;background:#C4C9D0;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#08131F;background:#8FC0FF;border-color:#6C9BD0"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-square" style="color:#08131F;background:#6FD0E2;border-color:#4FA0B2"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>9.7:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>8.6:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#C4C9D0;border-color:#8E949C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#08131F</code> on <code>#C4C9D0</code> = <b>11.2:1</b> AA<br>edge <code>#8E949C</code> 5.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#8FC0FF;border-color:#6C9BD0"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#08131F</code> on <code>#8FC0FF</code> = <b>9.9:1</b> AA<br>edge <code>#6C9BD0</code> 6.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#BBA6F2;border-color:#9584D0"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#08131F</code> on <code>#BBA6F2</code> = <b>8.8:1</b> AA<br>edge <code>#9584D0</code> 5.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#F09AD0;border-color:#C47AAB"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#08131F</code> on <code>#F09AD0</code> = <b>9.1:1</b> AA<br>edge <code>#C47AAB</code> 5.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square heavy" style="color:#0B1B33;background:#F0B434;border-color:#FFD98A"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#0B1B33</code> on <code>#F0B434</code> = <b>9.3:1</b> AA<br>edge <code>#FFD98A</code> 13.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#6FD0E2;border-color:#4FA0B2"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#08131F</code> on <code>#6FD0E2</code> = <b>10.5:1</b> AA<br>edge <code>#4FA0B2</code> 5.9:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square term" style="color:#08131F;background:#6BDCA8;border-color:#4FA97C"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#08131F</code> on <code>#6BDCA8</code> = <b>11.1:1</b> AA<br>edge <code>#4FA97C</code> 6.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-square" style="color:#08131F;background:#FF9A90;border-color:#C8756B"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#08131F</code> on <code>#FF9A90</code> = <b>9.1:1</b> AA<br>edge <code>#C8756B</code> 5.2:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+  </div>
+</section>
+<section class="var">
+  <div class="var-head"><span class="var-num">04</span>
+    <div><h2>Evening Parchment</h2><p class="reg">Built for 9pm on the sofa: a dimmed warm parchment instead of glare, muted status tints, and a warm charcoal-navy dark that is the mode it was designed in.</p></div></div>
+  <div class="pair">
+    <section class="pane">
+  <div class="pane-hd hd-l"><span class="sw2" style="background:#FAF3E4"></span>
+    <span>Light mode</span><span class="hx">base #FAF3E4 &middot; raised #FFFBF1</span></div>
+  <div class="pane-body v4-l">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#FAF3E4"></span><span class="m"><span class="r">surface-base</span><span class="h">#FAF3E4</span><span class="c"><b>14.0:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFBF1"></span><span class="m"><span class="r">surface-raised</span><span class="h">#FFFBF1</span><span class="c"><b>15.0:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#EFE5D0"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#EFE5D0</span><span class="c"><b>12.4:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#1A2438"></span><span class="m"><span class="r">text-primary</span><span class="h">#1A2438</span><span class="c"><b>14.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>15.0:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#54503F"></span><span class="m"><span class="r">text-secondary</span><span class="h">#54503F</span><span class="c"><b>7.3:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>7.8:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#1A2438"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#1A2438</span><span class="c"><b>6.9:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#9C8C6E"></span><span class="m"><span class="r">border-default</span><span class="h">#9C8C6E</span><span class="c"><b>3.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.2:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#1A2438"></span><span class="m"><span class="r">border-strong</span><span class="h">#1A2438</span><span class="c"><b>14.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#FAF3E4;box-shadow:0 0 0 3px #2A4A7A"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#2A4A7A</span><span class="c"><b>8.1:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#FFFBF1"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#FFFBF1</span><span class="c"><b>8.6:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#DFA326"></span><span class="m"><span class="r">accent-primary</span><span class="h">#DFA326</span><span class="c"><b>6.9:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B7830F"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#B7830F</span><span class="c"><b>4.6:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F4E3BB"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#F4E3BB</span><span class="c"><b>12.2:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#9C3227"></span><span class="m"><span class="r">danger</span><span class="h">#9C3227</span><span class="c"><b>6.6:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#7D5406"></span><span class="m"><span class="r">warning</span><span class="h">#7D5406</span><span class="c"><b>6.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#1B5C42"></span><span class="m"><span class="r">success</span><span class="h">#1B5C42</span><span class="c"><b>7.2:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#2A5688"></span><span class="m"><span class="r">info</span><span class="h">#2A5688</span><span class="c"><b>6.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F7E8E4"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#F7E8E4</span><span class="c"><b>6.1:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F7ECD4"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#F7ECD4</span><span class="c"><b>5.7:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E7EFE8"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#E7EFE8</span><span class="c"><b>6.7:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E9EEF5"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#E9EEF5</span><span class="c"><b>6.5:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#DFA326</code> is only <b>2.0:1</b> against <code>#FAF3E4</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #1A2438</code>
+    (<b>14.0:1</b>) and carries <code>#1A2438</code> text at <b>6.9:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#FAF3E4</code> and mustard <code>#DFA326</code>. Core <code>#2A4A7A</code> measures
+    <b>8.1:1</b> on the page and <b>4.0:1</b> on a mustard button;
+    halo <code>#FFFBF1</code> measures <b>2.2:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>4.0:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>7.8:1</b> on the raised row surface; the ticked box carries
+  <b>6.9:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-pill dashed" style="color:#4A4C48;background:#FFFBF1;border-color:#71736D"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#1E4A78;background:#DDE5EE;border-color:#3D6B95"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#14545F;background:#D8E6E6;border-color:#2E7A85"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>7.8:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>5.7:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-pill dashed" style="color:#4A4C48;background:#FFFBF1;border-color:#71736D"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#4A4C48</code> on <code>#FFFBF1</code> = <b>8.4:1</b> AA<br>edge <code>#71736D</code> 4.6:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#1E4A78;background:#DDE5EE;border-color:#3D6B95"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#1E4A78</code> on <code>#DDE5EE</code> = <b>7.2:1</b> AA<br>edge <code>#3D6B95</code> 5.4:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#57408C;background:#E4DCEC;border-color:#75619F"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#57408C</code> on <code>#E4DCEC</code> = <b>6.3:1</b> AA<br>edge <code>#75619F</code> 5.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#7E3466;background:#EFDCE6;border-color:#A05787"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#7E3466</code> on <code>#EFDCE6</code> = <b>6.2:1</b> AA<br>edge <code>#A05787</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill heavy" style="color:#1A2438;background:#DFA326;border-color:#1A2438"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#1A2438</code> on <code>#DFA326</code> = <b>6.9:1</b> AA<br>edge <code>#1A2438</code> 15.0:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#14545F;background:#D8E6E6;border-color:#2E7A85"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#14545F</code> on <code>#D8E6E6</code> = <b>6.7:1</b> AA<br>edge <code>#2E7A85</code> 4.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill term" style="color:#FFFFFF;background:#1B5C42;border-color:#3A8261"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#FFFFFF</code> on <code>#1B5C42</code> = <b>7.9:1</b> AA<br>edge <code>#3A8261</code> 4.5:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill dashed strike term" style="color:#9C3227;background:#FFFBF1;border-color:#BC5347"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#9C3227</code> on <code>#FFFBF1</code> = <b>7.0:1</b> AA<br>edge <code>#BC5347</code> 4.5:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+    <section class="pane">
+  <div class="pane-hd hd-d"><span class="sw2" style="background:#141B24"></span>
+    <span>Dark mode</span><span class="hx">base #141B24 &middot; raised #1F2833</span></div>
+  <div class="pane-body v4-d">
+    <div class="blk"><h4 class="blk-h">Semantic tokens &mdash; hex &amp; measured ratio</h4>
+      <div class="tk-grid">
+<div class="tk"><span class="sw" style="background:#141B24"></span><span class="m"><span class="r">surface-base</span><span class="h">#141B24</span><span class="c"><b>15.1:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#1F2833"></span><span class="m"><span class="r">surface-raised</span><span class="h">#1F2833</span><span class="c"><b>13.0:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0D131A"></span><span class="m"><span class="r">surface-sunken</span><span class="h">#0D131A</span><span class="c"><b>16.3:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F5EFE2"></span><span class="m"><span class="r">text-primary</span><span class="h">#F5EFE2</span><span class="c"><b>15.1:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>13.0:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#B0AB9B"></span><span class="m"><span class="r">text-secondary</span><span class="h">#B0AB9B</span><span class="c"><b>7.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>6.5:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#141B24"></span><span class="m"><span class="r">text-on-accent</span><span class="h">#141B24</span><span class="c"><b>8.6:1</b> vs accent-primary &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#66707E"></span><span class="m"><span class="r">border-default</span><span class="h">#66707E</span><span class="c"><b>3.5:1</b> vs surface-base &middot; <span class="ok">AA</span></span><span class="c"><b>3.0:1</b> vs surface-raised &middot; <span class='ok'>AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8A9280"></span><span class="m"><span class="r">border-strong</span><span class="h">#8A9280</span><span class="c"><b>5.4:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw ring" style="background:#141B24;box-shadow:0 0 0 3px #FBDE9C"><i></i></span><span class="m"><span class="r">focus-ring</span><span class="h">#FBDE9C</span><span class="c"><b>13.2:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#0D131A"></span><span class="m"><span class="r">focus-ring-offset</span><span class="h">#0D131A</span><span class="c"><b>14.2:1</b> vs focus-ring core (doubled halo) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#E5AE3C"></span><span class="m"><span class="r">accent-primary</span><span class="h">#E5AE3C</span><span class="c"><b>8.6:1</b> vs text-on-accent (it is a FILL, not an edge) &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F6C258"></span><span class="m"><span class="r">accent-primary-hover</span><span class="h">#F6C258</span><span class="c"><b>10.5:1</b> vs text-on-accent &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#2E2718"></span><span class="m"><span class="r">accent-quiet</span><span class="h">#2E2718</span><span class="c"><b>12.9:1</b> vs text-primary on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#F0A79C"></span><span class="m"><span class="r">danger</span><span class="h">#F0A79C</span><span class="c"><b>8.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#EEC873"></span><span class="m"><span class="r">warning</span><span class="h">#EEC873</span><span class="c"><b>10.8:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#8FD3AE"></span><span class="m"><span class="r">success</span><span class="h">#8FD3AE</span><span class="c"><b>10.0:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#A5C4E4"></span><span class="m"><span class="r">info</span><span class="h">#A5C4E4</span><span class="c"><b>9.6:1</b> vs surface-base &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#301A17"></span><span class="m"><span class="r">danger-tint (support)</span><span class="h">#301A17</span><span class="c"><b>8.3:1</b> vs danger text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#352A12"></span><span class="m"><span class="r">warn-tint (support)</span><span class="h">#352A12</span><span class="c"><b>8.8:1</b> vs warning text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#122E23"></span><span class="m"><span class="r">success-tint (support)</span><span class="h">#122E23</span><span class="c"><b>8.4:1</b> vs success text on it &middot; <span class="ok">AA</span></span></span></div>
+<div class="tk"><span class="sw" style="background:#16263A"></span><span class="m"><span class="r">info-tint (support)</span><span class="h">#16263A</span><span class="c"><b>8.5:1</b> vs info text on it &middot; <span class="ok">AA</span></span></span></div>
+</div>
+<p class="note"><b>Two honest caveats, measured not asserted.</b>
+    Mustard <code>#E5AE3C</code> is only <b>8.6:1</b> against <code>#141B24</code>, so it can never be a
+    boundary on its own &mdash; every mustard fill is bounded by <code>border-strong #8A9280</code>
+    (<b>5.4:1</b>) and carries <code>#141B24</code> text at <b>8.6:1</b>.
+    The focus indicator is a <b>doubled ring</b> because no single hue can clear 3:1 against both
+    <code>#141B24</code> and mustard <code>#E5AE3C</code>. Core <code>#FBDE9C</code> measures
+    <b>13.2:1</b> on the page and <b>1.5:1</b> on a mustard button;
+    halo <code>#0D131A</code> measures <b>9.3:1</b> on mustard. Whichever half is weak,
+    the other carries &mdash; the better half is <b>9.3:1</b> on mustard.</p>
+    </div>
+    <div class="blk"><h4 class="blk-h">Pack screen &mdash; ticked title, stepper, locked last title</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Grade 5 &middot; Term 1 pack &middot; pack screen</span></div>
+  <div class="prow">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">School Atlas of the World<span class="pmeta">8th Edition &middot; 2,250 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b>&minus;</b><span class="q">2</span><b>+</b></span>
+        <span class="amt">4,500<small>2 &times; 2,250</small></span>
+      </span></span>
+  </div>
+  <div class="prow locked">
+    <span class="cb"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8.8l3.6 3.6L14 3.6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg></span>
+    <span><span class="pname">English Pupil's Book 5<span class="pmeta">3rd Edition &middot; 1,450 each</span></span>
+      <span class="pfoot">
+        <span class="stp"><b class="off">&minus;</b><span class="q">1</span><b>+</b></span>
+        <span class="amt">1,450<small>1 &times; 1,450</small></span>
+      </span>
+      <span class="lockmsg"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.6" y="7" width="10.8" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Last title in this order. Tick another book before you remove this one &mdash; an order needs at least one title.</span></span>
+    </span>
+  </div>
+  <div class="pbar">
+    <span><span class="k">Order total &middot; 4 titles</span><span class="v">9,320</span></span>
+    <span class="cta">Review order</span>
+  </div>
+  <p class="note">Supporting text measures <b>6.5:1</b> on the raised row surface; the ticked box carries
+  <b>8.6:1</b> navy-on-mustard, never white-on-mustard. The locked row is <b>promoted</b>
+  (heavier edge, mustard wash) rather than greyed out, because it is a rule and not a dead control.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Admin today list &mdash; status + call state</h4>
+      <div class="snip">
+  <div class="snip-top"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg><span>Admin &middot; today list &middot; 14 August</span></div>
+  <div class="grp-h"><h5>Awaiting confirmation</h5><span class="n">4</span><span class="t">Oldest first</span></div>
+  <div class="orow attn">
+    <span class="oid">1042<small>7:48 pm</small></span>
+    <span><span class="onm">Nimali Perera</span><span class="omt">WhatsApp 077 412 8830 &middot; 4 lines &middot; 2 packs + pens &middot; 20,960</span></span>
+    <span class="ocol"><span class="pill sh-pill dashed" style="color:#C9C9C4;background:#1F2833;border-color:#90918C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span>
+      <span class="call never"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Not called yet</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1043<small>8:02 pm</small></span>
+    <span><span class="onm">Dilhani Fernando</span><span class="omt">WhatsApp 071 908 3372 &middot; 1 line &middot; Grade 1 Starter Set &middot; 6,140</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#A5C4E4;background:#1E3A55;border-color:#7A9CBE"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called 9:15 am &middot; no answer</span></span>
+  </div>
+  <div class="orow">
+    <span class="oid">1039<small>Yesterday</small></span>
+    <span><span class="onm">Ruwan Jayasuriya</span><span class="omt">WhatsApp 077 655 2201 &middot; 2 lines &middot; Grade 8 Prescribed Set &middot; 12,480</span></span>
+    <span class="ocol"><span class="pill sh-pill" style="color:#8CCBD4;background:#17444A;border-color:#78AAB4"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span>
+      <span class="call tried"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.1 2.2h2.6l1.2 3-1.5 1.1a7.4 7.4 0 004.3 4.3l1.1-1.5 3 1.2v2.6a1 1 0 01-1.1 1C6.9 15.4 1.5 10 2.1 3.3a1 1 0 011-1.1z" fill="currentColor"/><path d="M11.6 1.2l3.2 3.2M14.8 1.2l-3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>Called twice &middot; last 8:50 am</span></span>
+  </div>
+  <p class="note"><b>Called vs not called</b> differ on three axes at once, not hue:
+  dashed edge + hollow ring + secondary text (<b>6.5:1</b>) against solid edge + filled handset +
+  warning ink on a warm fill (<b>8.8:1</b>). Legible if printed in greyscale.</p>
+</div>
+    </div>
+    <div class="blk"><h4 class="blk-h">Full order pipeline &mdash; all 8 statuses</h4>
+      <div class="pipe">
+      <div class="pcell"><span class="pill sh-pill dashed" style="color:#C9C9C4;background:#1F2833;border-color:#90918C"><span class="st">1</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="2.6 2.2"/></svg><span class="lb">Order Is Placed</span></span><span class="pmeasure"><code>#C9C9C4</code> on <code>#1F2833</code> = <b>9.0:1</b> AA<br>edge <code>#90918C</code> 4.7:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#A5C4E4;background:#1E3A55;border-color:#7A9CBE"><span class="st">2</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.6l3.2 3.2L12 3.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"/></svg><span class="lb">Order Confirmed</span></span><span class="pmeasure"><code>#A5C4E4</code> on <code>#1E3A55</code> = <b>6.5:1</b> AA<br>edge <code>#7A9CBE</code> 5.2:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#C2B0E2;background:#383060;border-color:#9A8FBE"><span class="st">3</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 1.6a5.4 5.4 0 010 10.8z" fill="currentColor"/></svg><span class="lb">Processing</span></span><span class="pmeasure"><code>#C2B0E2</code> on <code>#383060</code> = <b>6.0:1</b> AA<br>edge <code>#9A8FBE</code> 5.0:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#E9AFD0;background:#5A3348;border-color:#BE8CA8"><span class="st">4</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><rect x="1.6" y="3.4" width="10.8" height="8.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.6 6.6h10.8M7 6.6v5.2" stroke="currentColor" stroke-width="2"/></svg><span class="lb">Packing The Order</span></span><span class="pmeasure"><code>#E9AFD0</code> on <code>#5A3348</code> = <b>5.7:1</b> AA<br>edge <code>#BE8CA8</code> 5.3:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill heavy" style="color:#141B24;background:#E5AE3C;border-color:#F7CF7E"><span class="st">5</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 12.6V1.8h8.4L9.2 5.4l2.2 3.6H4.4" fill="currentColor"/></svg><span class="lb">Ready To Deliver</span></span><span class="pmeasure"><code>#141B24</code> on <code>#E5AE3C</code> = <b>8.6:1</b> AA<br>edge <code>#F7CF7E</code> 10.1:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill" style="color:#8CCBD4;background:#17444A;border-color:#78AAB4"><span class="st">6</span><svg viewBox="0 0 16 14" width="14" height="12" aria-hidden="true"><path d="M1 7h10M8.4 3.2L12.6 7l-4.2 3.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">On Delivery Partner</span></span><span class="pmeasure"><code>#8CCBD4</code> on <code>#17444A</code> = <b>5.9:1</b> AA<br>edge <code>#78AAB4</code> 5.8:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill term" style="color:#141B24;background:#8FD3AE;border-color:#7CAE93"><span class="st">7</span><svg viewBox="0 0 18 14" width="15" height="12" aria-hidden="true"><path d="M1 7.6l3 3.2 5.6-7.2M8 10.8l1 1 6-7.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg><span class="lb">Delivered</span></span><span class="pmeasure"><code>#141B24</code> on <code>#8FD3AE</code> = <b>10.0:1</b> AA<br>edge <code>#7CAE93</code> 5.9:1 AA</span></div>
+<div class="pcell"><span class="pill sh-pill dashed strike term" style="color:#F0A79C;background:#1F2833;border-color:#C4897E"><span class="st">×</span><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2.4 2.4l9.2 9.2M11.6 2.4l-9.2 9.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span class="lb">Cancelled</span></span><span class="pmeasure"><code>#F0A79C</code> on <code>#1F2833</code> = <b>7.6:1</b> AA<br>edge <code>#C4897E</code> 5.1:1 AA</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+  </div>
+</section>
+<section class="var">
+  <div class="var-head"><span class="var-num">&#8862;</span>
+    <div><h2>How the eight statuses stay separable</h2>
+    <p class="reg">Hue is the fourth signal, never the first. Every pill carries a <b>step number</b> (1&ndash;8, with
+    &times; for the terminal cancel), a <b>unique glyph</b> (dashed ring, tick, half-disc, crate, flag, arrow, double
+    tick, cross), and a <b>weight band</b> &mdash; dashed outline for not-yet-started, tint or outline for in-flight,
+    solid fill for the two states that end the day. Terminal states also change shape: square-cut corners against the
+    in-flight pills. Photocopied in greyscale, or read by a deuteranope, the ladder still reads in order.</p></div></div>
+</section>
+</div>
+</body>
+</html>

@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book List — Direction A: Navy &amp; School-bag Mustard</title>
+<style>
+/* ============================================================================
+   BOOK LIST — DESIGN DIRECTION A: "NAVY & SCHOOL-BAG MUSTARD"
+   Honours the PRD's unresolved palette hint (prd §14 Q1 / addendum L49).
+
+   ---- PALETTE (every concrete hex, liftable) --------------------------------
+   --navy-900   #0B1B33  deepest navy. App chrome, all body text, phone bezel.
+   --navy-800   #12294A  raised navy surfaces (admin sidebar, chrome bar).
+   --navy-700   #1B3A66  navy borders on navy, muted navy text on mustard.
+   --navy-500   #2E5891  informational fills, pipeline track.
+   --navy-100   #DCE5F0  navy-tinted wash for selected rows.
+   --mustard-500 #E8A61A school-bag mustard. Primary action surface.
+   --mustard-600 #C98A0E mustard pressed/hover + 2px action borders.
+   --mustard-100 #FDF0D2 mustard wash for highlight bands.
+   --cream       #FFFBF2 page background (warm paper, not clinical white).
+   --white       #FFFFFF card surfaces.
+   --slate-600   #4A5A72 secondary/supporting text.
+   --line-strong #8A7C61 ALL control boundaries (checkbox, stepper, input).
+   --line-soft   #D7CDB8 decorative separators only (never a control edge).
+   --danger-700  #B3261E error text + error rule.
+   --danger-50   #FDECEA error band fill.
+   --success-700 #146B45 confirmed / delivered.
+   --success-50  #E7F3ED success band fill.
+   --warn-700    #8A5A00 "call attempted" amber text.
+   --warn-50     #FFF3D6 "call attempted" band fill.
+   --focus       #1B3A66 focus ring core, doubled with #FFFFFF for any hue.
+
+   ---- CONTRAST REASONING (WCAG 2.2 AA) -------------------------------------
+   Body text #0B1B33 on #FFFBF2 = 14.5:1 and on #FFFFFF = 15.6:1 (needs 4.5).
+   Supporting text #4A5A72 on #FFFBF2 = 6.8:1 (needs 4.5).
+   Navy #0B1B33 on mustard #E8A61A = 7.3:1 — so the primary button carries
+   NAVY text, not white; white on mustard would be only 2.1:1 and is banned.
+   Mustard #E8A61A on navy #0B1B33 = 7.3:1, used for accents in dark chrome.
+   #B3261E = 6.3:1, #146B45 = 6.2:1, #8A5A00 = 5.7:1, all on cream.
+   Control edges use #8A7C61 = 4.0:1 against cream, clearing the 3:1 floor for
+   UI boundaries; #D7CDB8 (1.5:1) is decorative only and never bounds a control.
+   Focus: 3px #1B3A66 ring + 2px #FFFFFF offset gap, so the ring clears 3:1
+   against BOTH cream surfaces and mustard buttons.
+   Status is never colour-only — every state chip pairs hue with a glyph and a
+   word ("Not called yet", "Called 9:15 am · no answer").
+   Touch: every checkbox, stepper and row action is min 44x44px.
+   ========================================================================== */
+
+:root{
+  --navy-900:#0B1B33; --navy-800:#12294A; --navy-700:#1B3A66; --navy-500:#2E5891;
+  --navy-100:#DCE5F0; --mustard-500:#E8A61A; --mustard-600:#C98A0E;
+  --mustard-100:#FDF0D2; --cream:#FFFBF2; --white:#FFFFFF; --slate-600:#4A5A72;
+  --line-strong:#8A7C61; --line-soft:#D7CDB8; --danger-700:#B3261E;
+  --danger-50:#FDECEA; --success-700:#146B45; --success-50:#E7F3ED;
+  --warn-700:#8A5A00; --warn-50:#FFF3D6;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --r: 12px; --r-sm: 8px; --r-lg: 18px;
+  /* The satchel: 2px edges and a hard offset shadow. Nothing floats; things sit. */
+  --lift: 3px 3px 0 var(--navy-900);
+  --lift-sm: 2px 2px 0 var(--navy-900);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--cream); color:var(--navy-900);
+  font-family:var(--sans); font-size:16px; line-height:1.5;
+  font-variant-numeric:tabular-nums;
+}
+h1,h2,h3,h4{margin:0; font-weight:800; letter-spacing:-.02em; line-height:1.15}
+p{margin:0}
+button{font:inherit; color:inherit; cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:3px solid var(--navy-700); outline-offset:2px; border-radius:4px}
+.focus-demo{outline:3px solid var(--navy-700); outline-offset:2px}
+
+/* ---------- document shell (the spec sheet, not the product) -------------- */
+.sheet{max-width:1220px; margin:0 auto; padding:28px 20px 72px}
+.doc-head{border-bottom:4px solid var(--navy-900); padding-bottom:20px; margin-bottom:8px}
+.badge-row{display:flex; align-items:center; gap:10px; margin-bottom:14px}
+.mark{display:inline-flex; align-items:center; gap:8px; background:var(--navy-900);
+  color:var(--mustard-500); padding:7px 12px; border-radius:var(--r-sm); font-weight:800; font-size:14px}
+.tag{font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase;
+  background:var(--mustard-100); color:var(--navy-900); border:2px solid var(--mustard-600);
+  padding:5px 9px; border-radius:99px}
+.doc-head h1{font-size:34px}
+.rationale{margin-top:12px; max-width:74ch; font-size:16.5px; color:var(--navy-900)}
+.rationale b{background:var(--mustard-100); padding:0 3px}
+.sec{margin-top:52px}
+.sec > h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--slate-600);
+  border-bottom:2px solid var(--line-soft); padding-bottom:8px; margin-bottom:6px}
+.sec-lede{margin:12px 0 22px; max-width:80ch; color:var(--slate-600); font-size:15px}
+.cap{font-size:13px; color:var(--slate-600); max-width:46ch; margin-top:12px}
+.cap b{color:var(--navy-900)}
+.row{display:flex; flex-wrap:wrap; gap:32px; align-items:flex-start}
+
+/* ---------- device frames ------------------------------------------------ */
+.phone{width:376px; flex:0 0 auto; background:var(--navy-900); border-radius:34px;
+  padding:9px; box-shadow:6px 6px 0 rgba(11,27,51,.18)}
+.phone-screen{background:var(--cream); border-radius:26px; overflow:hidden}
+.statusbar{display:flex; justify-content:space-between; align-items:center;
+  background:var(--navy-900); color:var(--white); font-size:12px; font-weight:700;
+  padding:7px 18px 9px}
+.statusbar span{opacity:.9}
+.browser{flex:1 1 640px; min-width:320px; border:3px solid var(--navy-900);
+  border-radius:var(--r-lg); overflow:hidden; background:var(--white); box-shadow:var(--lift)}
+.browser-chrome{display:flex; align-items:center; gap:12px; background:var(--navy-800);
+  padding:10px 14px}
+.dots{display:flex; gap:6px}
+.dots i{width:11px; height:11px; border-radius:50%; background:#7C8CA5}
+.dot1{background:#E8A61A}
+.url{flex:1; background:var(--navy-900); color:#C8D6E8; border:1px solid var(--navy-700);
+  border-radius:99px; font-size:12.5px; padding:6px 12px; overflow:hidden; white-space:nowrap}
+.url b{color:var(--white)}
+.browser-body{overflow-x:auto}
+
+/* ---------- storefront app chrome ---------------------------------------- */
+.app-top{background:var(--navy-900); color:var(--white); padding:12px 16px 14px;
+  display:flex; align-items:center; gap:12px}
+.app-top .back{width:44px; height:44px; min-width:44px; display:grid; place-items:center;
+  background:var(--navy-800); border:2px solid var(--navy-700); border-radius:var(--r-sm); color:var(--white)}
+.app-top .who{flex:1; min-width:0}
+.app-top .kicker{font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mustard-500); font-weight:800}
+.app-top .title{font-size:17px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.crumb{background:var(--mustard-100); border-bottom:2px solid var(--mustard-600);
+  padding:9px 16px; font-size:13px; font-weight:700; color:var(--navy-900);
+  display:flex; gap:8px; align-items:center}
+
+/* ---------- pack screen -------------------------------------------------- */
+.pack-intro{padding:16px 16px 4px}
+.pack-intro h3{font-size:22px; margin-bottom:6px}
+.pack-desc{font-size:14px; color:var(--slate-600); margin-top:6px}
+.hint{margin:14px 16px 4px; background:var(--white); border:2px solid var(--navy-900);
+  border-left-width:8px; border-radius:var(--r); padding:11px 13px; font-size:14px;
+  font-weight:600; box-shadow:var(--lift-sm)}
+.count-strip{display:flex; justify-content:space-between; align-items:baseline;
+  padding:16px 16px 8px; font-size:12.5px; font-weight:800; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--slate-600)}
+.titles{list-style:none; margin:0; padding:0 16px}
+.title-row{display:grid; grid-template-columns:44px 1fr; gap:10px; background:var(--white);
+  border:2px solid var(--line-strong); border-radius:var(--r); padding:10px 12px 12px; margin-bottom:10px}
+.title-row.off{background:#F6F1E6; border-style:dashed; border-color:var(--line-strong)}
+.title-row.locked{border-color:var(--navy-900); border-width:3px; background:var(--mustard-100)}
+.cbwrap{display:grid; place-items:center; min-width:44px; min-height:44px}
+input[type=checkbox]{appearance:none; -webkit-appearance:none; margin:0;
+  width:26px; height:26px; border:3px solid var(--navy-900); border-radius:6px;
+  background:var(--white); display:grid; place-items:center}
+input[type=checkbox]:checked{background:var(--navy-900)}
+input[type=checkbox]:checked::after{content:""; width:12px; height:7px; margin-top:-3px;
+  border-left:3px solid var(--mustard-500); border-bottom:3px solid var(--mustard-500);
+  transform:rotate(-45deg)}
+input[type=checkbox]:disabled{border-color:var(--navy-900); background:var(--navy-900); opacity:1}
+input[type=checkbox]:disabled::after{border-color:var(--mustard-500)}
+.t-name{font-size:15px; font-weight:700; line-height:1.3}
+.t-ed{display:block; font-weight:600; font-size:12.5px; color:var(--slate-600); margin-top:3px}
+.title-row.off .t-name{text-decoration:line-through; text-decoration-thickness:2px; color:var(--slate-600)}
+.t-foot{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px}
+.stepper{display:inline-flex; align-items:stretch; border:2px solid var(--line-strong);
+  border-radius:var(--r-sm); overflow:hidden; background:var(--white)}
+.stepper button{min-width:44px; min-height:44px; border:0; background:var(--white);
+  font-size:20px; font-weight:800; line-height:1; color:var(--navy-900)}
+.stepper button:last-child{border-left:2px solid var(--line-strong)}
+.stepper button:first-child{border-right:2px solid var(--line-strong)}
+.stepper .qty{min-width:46px; display:grid; place-items:center; font-weight:800; font-size:16px;
+  background:var(--mustard-100)}
+.stepper button[disabled]{background:#EFE9DC; color:var(--slate-600); cursor:not-allowed}
+.line-total{font-weight:800; font-size:16px; white-space:nowrap}
+.line-total small{display:block; font-weight:600; font-size:11.5px; color:var(--slate-600); text-align:right}
+.owned{font-size:13px; font-weight:700; color:var(--slate-600)}
+.reason{margin-top:9px; display:flex; gap:8px; align-items:flex-start; background:var(--white);
+  border:2px solid var(--navy-900); border-radius:var(--r-sm); padding:9px 10px; font-size:13px; font-weight:600}
+.reason svg{flex:0 0 auto; margin-top:2px}
+.re-add{background:transparent; border:2px dashed var(--line-strong); border-radius:var(--r-sm);
+  min-height:44px; padding:0 14px; font-size:13.5px; font-weight:800; color:var(--navy-900)}
+
+/* running total bar */
+.totalbar{position:relative; margin-top:6px; background:var(--navy-900); color:var(--white); padding:14px 16px 18px}
+.totalbar .tt{display:flex; justify-content:space-between; align-items:flex-end; gap:12px}
+.totalbar .lbl{font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--mustard-500)}
+.totalbar .amt{font-size:30px; font-weight:800; letter-spacing:-.03em}
+.totalbar .sub{font-size:12.5px; color:#C8D6E8; margin-top:4px}
+.cta{display:block; width:100%; margin-top:14px; min-height:52px; background:var(--mustard-500);
+  color:var(--navy-900); border:3px solid var(--navy-900); border-radius:var(--r);
+  font-size:16.5px; font-weight:800; box-shadow:0 4px 0 var(--mustard-600)}
+.cta.ghost{background:transparent; color:var(--white); border-color:var(--mustard-500); box-shadow:none}
+
+/* ---------- admin -------------------------------------------------------- */
+.admin{display:grid; grid-template-columns:214px 1fr; min-width:900px; background:var(--cream)}
+.admin-nav{background:var(--navy-900); color:#C8D6E8; padding:16px 12px 26px}
+.admin-nav .mark{background:transparent; padding:0 0 14px; color:var(--white); font-size:15px}
+.nav-lbl{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#8FA6C4;
+  margin:16px 0 6px; font-weight:800}
+.admin-nav a{display:flex; align-items:center; justify-content:space-between; gap:8px;
+  min-height:44px; padding:0 10px; border-radius:var(--r-sm); color:#DCE5F0;
+  text-decoration:none; font-size:14px; font-weight:700}
+.admin-nav a.on{background:var(--mustard-500); color:var(--navy-900)}
+.admin-nav a .n{font-size:12px; font-weight:800; background:var(--navy-700); color:var(--white);
+  border-radius:99px; padding:2px 8px}
+.admin-nav a.on .n{background:var(--navy-900); color:var(--mustard-500)}
+.admin-main{padding:22px 26px 34px; min-width:0}
+.admin-head{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap}
+.admin-head h3{font-size:27px}
+.admin-head .sub{font-size:14px; color:var(--slate-600); margin-top:5px}
+.btn{min-height:44px; display:inline-flex; align-items:center; gap:8px; padding:0 16px;
+  border-radius:var(--r-sm); font-weight:800; font-size:14px; border:2px solid var(--navy-900);
+  background:var(--white); color:var(--navy-900); box-shadow:var(--lift-sm)}
+.btn.primary{background:var(--mustard-500); box-shadow:0 3px 0 var(--mustard-600)}
+.btn.sm{min-height:44px; font-size:13px; padding:0 12px}
+.counts{display:flex; gap:10px; flex-wrap:wrap; margin:20px 0 6px}
+.count{flex:1 1 132px; background:var(--white); border:2px solid var(--navy-900);
+  border-radius:var(--r); padding:11px 13px; box-shadow:var(--lift-sm)}
+.count.hot{background:var(--mustard-100)}
+.count .n{font-size:30px; font-weight:800; letter-spacing:-.03em; line-height:1}
+.count .k{font-size:11.5px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--slate-600); margin-top:6px}
+.grp{margin-top:26px}
+.grp-head{display:flex; align-items:center; gap:12px; padding-bottom:9px; border-bottom:3px solid var(--navy-900)}
+.grp-head h4{font-size:17px}
+.pill{font-size:12px; font-weight:800; background:var(--navy-900); color:var(--mustard-500);
+  border-radius:99px; padding:3px 10px}
+.grp-note{margin-left:auto; font-size:12.5px; color:var(--slate-600); font-weight:600}
+.order{display:grid; grid-template-columns:88px 1.5fr 1.1fr 152px auto; gap:14px; align-items:center;
+  background:var(--white); border:2px solid var(--line-strong); border-radius:var(--r);
+  padding:12px 14px; margin-top:10px}
+.order.attn{border-color:var(--navy-900); border-left-width:8px}
+.oid{font-size:19px; font-weight:800}
+.oid small{display:block; font-size:11.5px; font-weight:700; color:var(--slate-600)}
+.oname{font-weight:700; font-size:15px}
+.ometa{font-size:12.5px; color:var(--slate-600); margin-top:3px}
+.olines{font-size:13px; color:var(--slate-600)}
+.olines b{color:var(--navy-900); display:block; font-size:16px}
+.chip{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:800;
+  border-radius:var(--r-sm); padding:6px 9px; border:2px solid}
+.chip.never{background:var(--white); border-color:var(--navy-900); color:var(--navy-900)}
+.chip.tried{background:var(--warn-50); border-color:var(--warn-700); color:var(--warn-700)}
+.chip.ok{background:var(--success-50); border-color:var(--success-700); color:var(--success-700)}
+.chip .pip{width:9px; height:9px; border-radius:50%; background:currentColor}
+.chip.never .pip{background:transparent; border:3px solid var(--navy-900); width:11px; height:11px}
+.confirm-inline{display:flex; align-items:center; gap:10px; background:var(--mustard-100);
+  border:2px solid var(--mustard-600); border-radius:var(--r); padding:10px 12px; margin-top:10px; flex-wrap:wrap}
+.money-in{display:inline-flex; align-items:center; border:2px solid var(--line-strong);
+  border-radius:var(--r-sm); background:var(--white); overflow:hidden; min-height:44px}
+.money-in span{padding:0 10px; font-weight:800; border-right:2px solid var(--line-strong);
+  align-self:stretch; display:grid; place-items:center; background:#F6F1E6}
+.money-in input{border:0; padding:0 12px; width:112px; font-weight:800; font-size:16px; background:transparent}
+.money-in input:focus{outline:none}
+.inline-note{font-size:12.5px; color:var(--navy-900); font-weight:700; flex:1 1 220px}
+
+/* ---------- state variants ---------------------------------------------- */
+.states{display:flex; gap:26px; flex-wrap:wrap}
+.state{flex:1 1 330px; min-width:300px}
+.state-h{display:flex; align-items:center; gap:9px; font-size:12px; font-weight:800;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--navy-900); margin-bottom:10px}
+.state-h .k{background:var(--navy-900); color:var(--mustard-500); border-radius:var(--r-sm); padding:3px 8px; letter-spacing:.06em}
+.card{background:var(--white); border:3px solid var(--navy-900); border-radius:var(--r-lg);
+  padding:18px; box-shadow:var(--lift)}
+.empty{text-align:center; padding:26px 18px}
+.empty svg{margin-bottom:10px}
+.empty h4{font-size:19px; margin-bottom:8px}
+.empty p{font-size:14px; color:var(--slate-600); max-width:30ch; margin:0 auto 16px}
+.sk{height:14px; border-radius:6px; background:var(--line-soft); margin:9px 0}
+.sk.w70{width:70%} .sk.w45{width:45%} .sk.w88{width:88%}
+.sk-row{display:grid; grid-template-columns:26px 1fr 62px; gap:12px; align-items:center;
+  border:2px dashed var(--line-strong); border-radius:var(--r); padding:11px; margin-bottom:9px}
+.sk-box{width:26px; height:26px; border-radius:6px; background:var(--line-soft)}
+.band{border:3px solid; border-radius:var(--r); padding:13px 15px}
+.band.err{background:var(--danger-50); border-color:var(--danger-700)}
+.band.warn{background:var(--warn-50); border-color:var(--warn-700)}
+.band h4{font-size:16px; margin-bottom:6px}
+.band.err h4{color:var(--danger-700)}
+.band.warn h4{color:var(--warn-700)}
+.band p{font-size:14px; margin-top:6px}
+.band .acts{display:flex; gap:10px; margin-top:13px; flex-wrap:wrap}
+.cart-line{display:grid; grid-template-columns:1fr auto; gap:10px; border:2px solid var(--line-strong);
+  border-radius:var(--r); padding:12px; margin-bottom:10px; background:var(--white)}
+.cart-line.dupe{border-color:var(--navy-900); border-left-width:8px}
+.cl-label{display:inline-block; font-size:11.5px; font-weight:800; letter-spacing:.07em;
+  text-transform:uppercase; background:var(--navy-900); color:var(--mustard-500);
+  border-radius:99px; padding:3px 9px; margin-bottom:7px}
+.cl-label.two{background:var(--mustard-500); color:var(--navy-900)}
+.cl-name{font-weight:800; font-size:15px}
+.cl-meta{font-size:12.5px; color:var(--slate-600); margin-top:3px}
+.cl-amt{font-weight:800; text-align:right; white-space:nowrap}
+.cl-amt button{display:block; margin-top:8px; background:none; border:0; padding:6px 0;
+  min-height:44px; font-size:13px; font-weight:800; color:var(--danger-700); text-decoration:underline}
+.goods{display:flex; justify-content:space-between; align-items:baseline; border-top:3px solid var(--navy-900);
+  margin-top:4px; padding-top:12px; font-weight:800}
+.goods .big{font-size:24px}
+.delivery-line{display:flex; justify-content:space-between; gap:10px; font-size:14px;
+  font-weight:700; color:var(--navy-900); background:var(--mustard-100);
+  border:2px dashed var(--mustard-600); border-radius:var(--r-sm); padding:10px 12px; margin-top:10px}
+
+/* ---------- responsive proof ------------------------------------------- */
+.resp{display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap}
+.desk-pack{display:grid; grid-template-columns:1fr 288px; gap:0; min-width:760px}
+.dp-list{padding:22px 24px 26px}
+.dp-list h3{font-size:25px}
+.dp-row{display:grid; grid-template-columns:44px 1fr 158px 118px; gap:14px; align-items:center;
+  border-bottom:2px solid var(--line-soft); padding:12px 0}
+.dp-row:last-child{border-bottom:0}
+.dp-rail{background:var(--navy-900); color:var(--white); padding:22px 20px}
+.dp-rail .lbl{font-size:11.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--mustard-500)}
+.dp-rail .amt{font-size:34px; font-weight:800; letter-spacing:-.03em; margin-top:4px}
+.dp-rail ul{list-style:none; margin:16px 0 0; padding:0; font-size:13px; color:#C8D6E8}
+.dp-rail li{display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--navy-700)}
+.dp-rail li b{color:var(--white)}
+.stickynote{font-size:12px; color:#8FA6C4; margin-top:14px}
+
+/* ---------- palette footer --------------------------------------------- */
+.sw-grid{display:flex; flex-wrap:wrap; gap:10px; margin-top:16px}
+.sw{width:132px; border:2px solid var(--navy-900); border-radius:var(--r-sm); overflow:hidden; box-shadow:var(--lift-sm)}
+.sw .chipc{height:52px}
+.sw .meta{padding:7px 8px; font-size:11.5px; font-weight:800; background:var(--white)}
+.sw .meta small{display:block; font-weight:700; color:var(--slate-600); letter-spacing:.04em}
+.a11y{margin-top:26px; border:3px solid var(--navy-900); border-radius:var(--r-lg);
+  background:var(--white); padding:18px; box-shadow:var(--lift)}
+.a11y ul{margin:10px 0 0; padding-left:20px; font-size:14px}
+.a11y li{margin:6px 0}
+@media (max-width:900px){ .sheet{padding:20px 14px 56px} .doc-head h1{font-size:27px} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header class="doc-head">
+  <div class="badge-row">
+    <span class="mark">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false">
+        <rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/>
+      </svg>
+      Book List
+    </span>
+    <span class="tag">Direction A</span>
+    <span class="tag">Navy &amp; school-bag mustard</span>
+  </div>
+  <h1>Sturdy, signposted, unmistakably school.</h1>
+  <p class="rationale">
+    This direction makes the strongest case for the palette the PRD left unresolved: deep navy carries every
+    piece of chrome and every number, and school-bag mustard is reserved for the one thing you are meant to
+    touch. Shapes are <b>chunky and physically weighted</b> — 2–3px edges, hard offset shadows, buttons that
+    look pressable — so a parent thumbing through a long book list on a phone in the evening never has to
+    hunt for the control. It serves <b>Nimali under time pressure</b> and a vendor who wants a screen that
+    looks built, not sketched: confidence you can see from arm's length.
+  </p>
+</header>
+
+<!-- ===================== HERO: PACK SCREEN ============================== -->
+<section class="sec">
+  <h2>1 · Hero — the pack screen (parent, phone)</h2>
+  <p class="sec-lede">
+    The signature interaction. Every title on the school's list arrives ticked; Nimali unticks the two she
+    already owns and bumps the atlas to two copies. The total falls as she goes. The second frame shows the
+    guard-rail: when one title is left, its checkbox and its minus are locked, and the screen says why.
+  </p>
+
+  <div class="row">
+
+    <!-- ---- Phone 1: Nimali's state ---- -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8:41 pm</span><span>Wi-Fi &nbsp;•••• &nbsp;72%</span></div>
+
+          <div class="app-top">
+            <button class="back" aria-label="Back to grade filter">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="who">
+              <span class="kicker">Greenfield International</span>
+              <span class="title">Grade 5 · Term 1 pack</span>
+            </span>
+          </div>
+
+          <div class="crumb">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true" focusable="false"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg>
+            School › Grade 5 › Prescribed set
+          </div>
+
+          <div class="pack-intro">
+            <h3>Grade 5 Prescribed Set</h3>
+            <p class="pack-desc">Everything on the school's Grade 5 list for Term 1, in the editions the school asked for.</p>
+          </div>
+
+          <p class="hint">Everything on the list is already ticked. Untick anything you already have at home — the total drops as you go.</p>
+
+          <div class="count-strip"><span>6 of 8 titles</span><span>7 books</span></div>
+
+          <ul class="titles">
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a1" aria-label="English Pupil's Book 5, 3rd Edition"></span>
+              <span>
+                <span class="t-name">English Pupil's Book 5<span class="t-ed">3rd Edition · Rs. 1,450 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of English Pupil's Book 5">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of English Pupil's Book 5">+</button>
+                  </span>
+                  <span class="line-total">Rs. 1,450</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a2" aria-label="Mathematics Workbook 5, Revised 2026"></span>
+              <span>
+                <span class="t-name">Mathematics Workbook 5<span class="t-ed">Revised 2026 · Rs. 1,180 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of Mathematics Workbook 5">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of Mathematics Workbook 5">+</button>
+                  </span>
+                  <span class="line-total">Rs. 1,180</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a3" class="focus-demo" aria-label="School Atlas of the World, 8th Edition"></span>
+              <span>
+                <span class="t-name">School Atlas of the World<span class="t-ed">8th Edition · Rs. 2,250 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of School Atlas of the World">−</button>
+                    <span class="qty">2</span>
+                    <button type="button" aria-label="More copies of School Atlas of the World">+</button>
+                  </span>
+                  <span class="line-total">Rs. 4,500<small>2 × 2,250</small></span>
+                </span>
+                <span class="reason">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2l10 18H2L12 2zm-1 7v5h2V9h-2zm0 7v2h2v-2h-2z"/></svg>
+                  Two copies — the younger one will need it too. Up to 20 of any title.
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a4" aria-label="Sinhala Reader Grade 5, 2nd Edition"></span>
+              <span>
+                <span class="t-name">Sinhala Reader Grade 5<span class="t-ed">2nd Edition · Rs. 980 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of Sinhala Reader Grade 5">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of Sinhala Reader Grade 5">+</button>
+                  </span>
+                  <span class="line-total">Rs. 980</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="a5" aria-label="Environmental Studies 5, 2026 Edition"></span>
+              <span>
+                <span class="t-name">Environmental Studies 5<span class="t-ed">2026 Edition · Rs. 1,120 each</span></span>
+                <span class="t-foot">
+                  <span class="owned">Dropped — you have this one</span>
+                  <span class="line-total">Rs. 0</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="a6" aria-label="Practical Science Activity Book 5, 4th Edition"></span>
+              <span>
+                <span class="t-name">Practical Science Activity Book 5<span class="t-ed">4th Edition · Rs. 1,340 each</span></span>
+                <span class="t-foot">
+                  <span class="owned">Dropped — you have this one</span>
+                  <span class="line-total">Rs. 0</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a7" aria-label="Religion and Ethics 5, 2nd Edition"></span>
+              <span>
+                <span class="t-name">Religion &amp; Ethics 5<span class="t-ed">2nd Edition · Rs. 890 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of Religion and Ethics 5">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of Religion and Ethics 5">+</button>
+                  </span>
+                  <span class="line-total">Rs. 890</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked id="a8" aria-label="Handwriting Book 5, ruled, 80 pages"></span>
+              <span>
+                <span class="t-name">Handwriting Book 5<span class="t-ed">Ruled, 80pp · Rs. 320 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" aria-label="Fewer copies of Handwriting Book 5">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of Handwriting Book 5">+</button>
+                  </span>
+                  <span class="line-total">Rs. 320</span>
+                </span>
+              </span>
+            </li>
+          </ul>
+
+          <div class="totalbar">
+            <div class="tt">
+              <span>
+                <span class="lbl">Pack total</span>
+                <div class="amt">Rs. 9,320</div>
+                <div class="sub">6 titles ticked · 7 books · falls as you untick</div>
+              </span>
+            </div>
+            <button class="cta" type="button">Add this pack to cart</button>
+            <button class="cta ghost" type="button">Keep looking</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Faithful to FR31–FR34.</b> Pre-ticked by default, per-title line totals beside a running pack total, one action to add. The atlas at ×2 carries its own visible note including the 1–20 range, so the cap is known before it bites — never a silent refusal.</p>
+    </div>
+
+    <!-- ---- Phone 2: locked last title ---- -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8:44 pm</span><span>Wi-Fi &nbsp;•••• &nbsp;71%</span></div>
+          <div class="app-top">
+            <button class="back" aria-label="Back to grade filter">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="who">
+              <span class="kicker">Greenfield International</span>
+              <span class="title">Grade 5 · Term 1 pack</span>
+            </span>
+          </div>
+          <div class="crumb">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.5 7V5.5a3.5 3.5 0 1 1 7 0V7h.5A1 1 0 0 1 13 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5Zm1.5 0h4V5.5a2 2 0 1 0-4 0V7Z"/></svg>
+            One title has to stay in the pack
+          </div>
+
+          <div class="pack-intro">
+            <h3>Only want one book?</h3>
+            <p class="pack-desc">That works. Untick the rest and order the single title — the pack just becomes the one book you need.</p>
+          </div>
+
+          <div class="count-strip"><span>1 of 8 titles</span><span>1 book</span></div>
+
+          <ul class="titles">
+            <li class="title-row locked">
+              <span class="cbwrap">
+                <input type="checkbox" checked disabled id="b1" aria-describedby="lockmsg" aria-label="School Atlas of the World, 8th Edition — locked, last remaining title">
+              </span>
+              <span>
+                <span class="t-name">School Atlas of the World<span class="t-ed">8th Edition · Rs. 2,250 each</span></span>
+                <span class="t-foot">
+                  <span class="stepper">
+                    <button type="button" disabled aria-label="Fewer copies — locked, this is the last title in the pack">−</button>
+                    <span class="qty">1</span>
+                    <button type="button" aria-label="More copies of School Atlas of the World">+</button>
+                  </span>
+                  <span class="line-total">Rs. 2,250</span>
+                </span>
+                <span class="reason" id="lockmsg">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.5 7V5.5a3.5 3.5 0 1 1 7 0V7h.5A1 1 0 0 1 13 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5Zm1.5 0h4V5.5a2 2 0 1 0-4 0V7Z"/></svg>
+                  <span><b>Locked.</b> A pack needs at least one title. Tick another book below and this one unlocks.</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="b2" aria-label="English Pupil's Book 5, 3rd Edition"></span>
+              <span>
+                <span class="t-name">English Pupil's Book 5<span class="t-ed">3rd Edition · Rs. 1,450 each</span></span>
+                <span class="t-foot"><span class="owned">Not in this order</span><span class="line-total">Rs. 0</span></span>
+              </span>
+            </li>
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="b3" aria-label="Mathematics Workbook 5, Revised 2026"></span>
+              <span>
+                <span class="t-name">Mathematics Workbook 5<span class="t-ed">Revised 2026 · Rs. 1,180 each</span></span>
+                <span class="t-foot"><span class="owned">Not in this order</span><span class="line-total">Rs. 0</span></span>
+              </span>
+            </li>
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="b4" aria-label="Sinhala Reader Grade 5, 2nd Edition"></span>
+              <span>
+                <span class="t-name">Sinhala Reader Grade 5<span class="t-ed">2nd Edition · Rs. 980 each</span></span>
+                <span class="t-foot"><span class="owned">Not in this order</span><span class="line-total">Rs. 0</span></span>
+              </span>
+            </li>
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" id="b5" aria-label="Environmental Studies 5, 2026 Edition"></span>
+              <span>
+                <span class="t-name">Environmental Studies 5<span class="t-ed">2026 Edition · Rs. 1,120 each</span></span>
+                <span class="t-foot"><span class="owned">Not in this order</span><span class="line-total">Rs. 0</span></span>
+              </span>
+            </li>
+          </ul>
+
+          <div class="totalbar">
+            <div class="tt">
+              <span>
+                <span class="lbl">Pack total</span>
+                <div class="amt">Rs. 2,250</div>
+                <div class="sub">1 title ticked · the atlas only</div>
+              </span>
+            </div>
+            <button class="cta" type="button">Add this pack to cart</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>The locked last title (FR31, FR32, NFR4).</b> The row is promoted with a heavier navy edge and a mustard wash rather than greyed out, because it is a rule, not a broken control. The minus is locked too, and the copy tells Nimali exactly how to get past it. This is also how a single-title purchase works.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ADMIN TODAY LIST ============================== -->
+<section class="sec">
+  <h2>2 · The admin's home — today list (desktop browser)</h2>
+  <p class="sec-lede">
+    The vendor's morning screen. Counts first, then every open order grouped in pipeline order, with
+    confirmation work sitting at the top. "Called and got no answer" and "not called yet" are given two
+    different shapes as well as two different colours, because they must never be mistaken for each other.
+  </p>
+
+  <div class="browser">
+    <div class="browser-chrome">
+      <span class="dots"><i class="dot1"></i><i class="dot2"></i><i class="dot3"></i></span>
+      <span class="url"><b>booklist.bonto.run</b>/admin</span>
+    </div>
+    <div class="browser-body">
+      <div class="admin">
+        <nav class="admin-nav" aria-label="Admin sections">
+          <span class="mark">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--mustard-500)" aria-hidden="true" focusable="false"><rect x="3" y="15.5" width="18" height="4" rx="1.2"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.2"/><rect x="6.2" y="4.9" width="11.6" height="4" rx="1.2"/></svg>
+            Book List admin
+          </span>
+          <div class="nav-lbl">Orders</div>
+          <a href="#" class="on">Today list <span class="n">11</span></a>
+          <a href="#">Completed <span class="n">148</span></a>
+          <div class="nav-lbl">Catalog</div>
+          <a href="#">Schools</a>
+          <a href="#">Grades</a>
+          <a href="#">Book master</a>
+          <a href="#">Packs</a>
+          <a href="#">Individual items</a>
+          <div class="nav-lbl">Shop</div>
+          <a href="#">Export a copy</a>
+          <a href="#">Password</a>
+        </nav>
+
+        <div class="admin-main">
+          <div class="admin-head">
+            <div>
+              <h3>Today list</h3>
+              <p class="sub">Thursday 4 December · 11 orders open. Nothing leaves this list until it is Delivered or Cancelled.</p>
+            </div>
+            <button class="btn primary" type="button">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4L12 13.6V3h0zM4 18h16v3H4z"/></svg>
+              Export a copy
+            </button>
+          </div>
+
+          <div class="counts">
+            <div class="count hot"><div class="n">4</div><div class="k">Order is placed</div></div>
+            <div class="count"><div class="n">2</div><div class="k">Order confirmed</div></div>
+            <div class="count"><div class="n">1</div><div class="k">Processing</div></div>
+            <div class="count"><div class="n">1</div><div class="k">Packing the order</div></div>
+            <div class="count"><div class="n">2</div><div class="k">Ready to deliver</div></div>
+            <div class="count"><div class="n">1</div><div class="k">On delivery partner</div></div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head">
+              <h4>Order Is Placed</h4><span class="pill">4 to call</span>
+              <span class="grp-note">These are waiting on your confirmation call. Delivery price is set here.</span>
+            </div>
+
+            <div class="order attn">
+              <div class="oid">#1042<small>8:41 pm yest.</small></div>
+              <div>
+                <div class="oname">Nimali Perera</div>
+                <div class="ometa">WhatsApp 077 214 6630 · also 011 288 4471</div>
+              </div>
+              <div class="olines"><b>Rs. 20,960</b>4 lines · 2 packs + pens</div>
+              <div><span class="chip never"><span class="pip"></span>Not called yet</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+            <div class="confirm-inline">
+              <span class="inline-note">Type the delivery price and confirm in one go:</span>
+              <span class="money-in"><span>Rs.</span><input type="text" value="450" inputmode="numeric" aria-label="Delivery price for order 1042"></span>
+              <button class="btn primary" type="button">Set Order Confirmed</button>
+              <button class="btn sm" type="button">Mark call attempted</button>
+              <span class="inline-note">Once confirmed, nothing on this order can change — including this figure.</span>
+            </div>
+
+            <div class="order attn">
+              <div class="oid">#1041<small>7:58 pm yest.</small></div>
+              <div>
+                <div class="oname">Dilhani Fernando</div>
+                <div class="ometa">WhatsApp 071 909 3312 · no second number</div>
+              </div>
+              <div class="olines"><b>Rs. 6,140</b>1 line · Grade 1 Starter Set</div>
+              <div><span class="chip tried"><span class="pip"></span>Called 9:15 am · no answer</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+
+            <div class="order attn">
+              <div class="oid">#1040<small>6:12 pm yest.</small></div>
+              <div>
+                <div class="oname">Ruwan Jayasuriya</div>
+                <div class="ometa">WhatsApp 076 445 0198</div>
+              </div>
+              <div class="olines"><b>Rs. 12,480</b>2 lines · Grade 8 Prescribed Set</div>
+              <div><span class="chip never"><span class="pip"></span>Not called yet</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+
+            <div class="order attn">
+              <div class="oid">#1039<small>2 days ago</small></div>
+              <div>
+                <div class="oname">Menaka Silva</div>
+                <div class="ometa">WhatsApp 070 331 7726 · also 038 223 1140</div>
+              </div>
+              <div class="olines"><b>Rs. 4,320</b>1 line · Individual items only</div>
+              <div><span class="chip tried"><span class="pip"></span>Called twice · last 8:50 am</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head">
+              <h4>Order Confirmed</h4><span class="pill">2</span>
+              <span class="grp-note">Price agreed and frozen. Pack them.</span>
+            </div>
+            <div class="order">
+              <div class="oid">#1038<small>Confirmed 8:20 am</small></div>
+              <div><div class="oname">Anushka Rajapaksa</div><div class="ometa">WhatsApp 077 655 2201</div></div>
+              <div class="olines"><b>Rs. 9,940</b>Goods 9,490 + delivery 450</div>
+              <div><span class="chip ok"><span class="pip"></span>Price agreed</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+            <div class="order">
+              <div class="oid">#1036<small>Confirmed yest.</small></div>
+              <div><div class="oname">Thilini Bandara</div><div class="ometa">WhatsApp 072 118 4409</div></div>
+              <div class="olines"><b>Rs. 15,300</b>Goods 14,900 + delivery 400</div>
+              <div><span class="chip ok"><span class="pip"></span>Price agreed</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head">
+              <h4>Ready To Deliver</h4><span class="pill">2</span>
+              <span class="grp-note">Hand these to the partner with the WhatsApp number.</span>
+            </div>
+            <div class="order">
+              <div class="oid">#1031<small>Packed yest.</small></div>
+              <div><div class="oname">Sanjeewa Kumara</div><div class="ometa">WhatsApp 075 220 8814</div></div>
+              <div class="olines"><b>Rs. 7,180</b>Cash on delivery</div>
+              <div><span class="chip ok"><span class="pip"></span>Boxed &amp; labelled</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+            <div class="order">
+              <div class="oid">#1029<small>Packed yest.</small></div>
+              <div><div class="oname">Hasini Weerasinghe</div><div class="ometa">WhatsApp 078 774 3390</div></div>
+              <div class="olines"><b>Rs. 11,650</b>Cash on delivery</div>
+              <div><span class="chip ok"><span class="pip"></span>Boxed &amp; labelled</span></div>
+              <div><button class="btn sm" type="button">Open order</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head">
+              <h4>On Delivery Partner</h4><span class="pill">1</span>
+              <span class="grp-note">Mark Delivered when the partner reports the drop-off.</span>
+            </div>
+            <div class="order">
+              <div class="oid">#1024<small>Out since yest.</small></div>
+              <div><div class="oname">Kamal Dissanayake</div><div class="ometa">WhatsApp 077 001 9982</div></div>
+              <div class="olines"><b>Rs. 5,900</b>Collect Rs. 5,900 cash</div>
+              <div><span class="chip ok"><span class="pip"></span>With the partner</span></div>
+              <div><button class="btn sm" type="button">Mark Delivered</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="max-width:80ch"><b>FR56, FR57, FR60, FR61.</b> Grouped in pipeline order with a count per status; "not called yet" is a hollow ring in navy outline, "called, no answer" is a filled amber chip carrying the timestamp — different colour, different shape, different words. Confirmation and delivery price are one control, with the freeze stated before he types.</p>
+</section>
+
+<!-- ===================== STATE VARIANTS ============================== -->
+<section class="sec">
+  <h2>3 · States — nothing refuses silently</h2>
+  <p class="sec-lede">Four states a parent will actually hit, in this direction's voice.</p>
+
+  <div class="states">
+    <div class="state">
+      <div class="state-h"><span class="k">State 1</span> Empty cart</div>
+      <div class="card empty">
+        <svg viewBox="0 0 48 48" width="46" height="46" fill="none" stroke="var(--navy-900)" stroke-width="3" aria-hidden="true" focusable="false">
+          <rect x="7" y="33" width="34" height="8" rx="2"/><rect x="10" y="23" width="28" height="8" rx="2"/><rect x="13" y="13" width="22" height="8" rx="2"/>
+        </svg>
+        <h4>Nothing in your cart yet</h4>
+        <p>Pick your school, then your child's grade, and we'll show you the pack the school asked for.</p>
+        <button class="btn primary" type="button">Find my school's pack</button>
+      </div>
+      <p class="cap">FR44 — an empty cart routes back to discovery rather than dead-ending.</p>
+    </div>
+
+    <div class="state">
+      <div class="state-h"><span class="k">State 2</span> Cold start</div>
+      <div class="card">
+        <div class="band warn" style="margin-bottom:14px">
+          <h4>Opening the shop…</h4>
+          <p>The site goes to sleep when nobody's on it, so the first page of the evening takes a few seconds. Your cart is safe — it's kept on your account, not on this phone.</p>
+        </div>
+        <div class="sk-row"><span class="sk-box"></span><span><span class="sk w88"></span><span class="sk w45"></span></span><span class="sk"></span></div>
+        <div class="sk-row"><span class="sk-box"></span><span><span class="sk w70"></span><span class="sk w45"></span></span><span class="sk"></span></div>
+        <div class="sk-row"><span class="sk-box"></span><span><span class="sk w88"></span><span class="sk w45"></span></span><span class="sk"></span></div>
+      </div>
+      <p class="cap">§9 acknowledges the auto-sleep cold start but specifies no UI. Named, explained, and reassuring about the cart (FR38).</p>
+    </div>
+
+    <div class="state">
+      <div class="state-h"><span class="k">State 3</span> Price moved at checkout</div>
+      <div class="card">
+        <div class="band warn">
+          <h4>One price changed since you added it</h4>
+          <p><b>Mathematics Workbook 5 (Revised 2026)</b> is now <b>Rs. 1,240</b>. It was Rs. 1,180 when you put it in.</p>
+          <p>Nothing has been changed for you and nothing has been swapped. Say yes to the new price, or take the line out.</p>
+          <span class="acts">
+            <button class="btn primary" type="button">Accept Rs. 1,240</button>
+            <button class="btn" type="button">Remove this line</button>
+          </span>
+        </div>
+        <div class="band err" style="margin-top:14px">
+          <h4>One line can't be ordered</h4>
+          <p><b>Practical Science Activity Book 5</b> is no longer part of the Grade 5 pack. Take that line out and the rest of your order goes through as it is.</p>
+          <span class="acts"><button class="btn" type="button">Remove line</button></span>
+        </div>
+        <div class="delivery-line"><span>Delivery charge: to be confirmed by the shop</span><span>—</span></div>
+        <div class="goods"><span>Goods total</span><span class="big">Rs. 21,020</span></div>
+      </div>
+      <p class="cap">FR49 — repriced lines need an explicit yes, unavailable lines must go, nothing is silently substituted. The literal delivery line from FR45 stays put.</p>
+    </div>
+
+    <div class="state">
+      <div class="state-h"><span class="k">State 4</span> An error that explains itself</div>
+      <div class="card">
+        <div class="band err">
+          <h4>That cancel didn't go through</h4>
+          <p>The shop confirmed <b>#1042</b> about a minute before you tapped, and confirmed orders can't be cancelled here any more.</p>
+          <p><b>Nothing on your order changed.</b> The shop already has your delivery price of Rs. 450 and will bring the books to 42/3 Anderson Road, Nawala. If you need to stop it, they'll sort it on the phone.</p>
+          <span class="acts"><button class="btn primary" type="button">See order #1042</button></span>
+        </div>
+        <div class="band warn" style="margin-top:14px">
+          <h4>Admin side of the same clash</h4>
+          <p>Not applied. <b>#1039</b> was cancelled by the parent 40 seconds ago, so it can't be confirmed and no delivery price was saved. Menaka Silva's reason: "found them second-hand".</p>
+          <span class="acts"><button class="btn" type="button">Reload today list</button></span>
+        </div>
+      </div>
+      <p class="cap">T7, T8 and NFR4 — the loser of the race is told what happened, in words, on both sides of the app.</p>
+    </div>
+
+    <div class="state">
+      <div class="state-h"><span class="k">State 5</span> Two children in one cart</div>
+      <div class="card">
+        <div class="cart-line dupe">
+          <div>
+            <span class="cl-label">Pack 1 of Grade 5</span>
+            <div class="cl-name">Grade 5 Prescribed Set</div>
+            <div class="cl-meta">6 of 8 titles · atlas ×2 · Greenfield International</div>
+          </div>
+          <div class="cl-amt">Rs. 15,720<button type="button">Remove</button></div>
+        </div>
+        <div class="cart-line dupe">
+          <div>
+            <span class="cl-label">Pack 1 of Grade 1</span>
+            <div class="cl-name">Grade 1 Starter Set</div>
+            <div class="cl-meta">6 of 6 titles · nothing dropped</div>
+          </div>
+          <div class="cl-amt">Rs. 6,140<button type="button">Remove</button></div>
+        </div>
+        <div class="cart-line dupe">
+          <div>
+            <span class="cl-label two">Pack 2 of Grade 1</span>
+            <div class="cl-name">Grade 1 Starter Set</div>
+            <div class="cl-meta">5 of 6 titles · reader dropped · own ticks</div>
+          </div>
+          <div class="cl-amt">Rs. 5,020<button type="button">Remove</button></div>
+        </div>
+        <div class="cart-line">
+          <div>
+            <div class="cl-name">Ballpoint Pens, Blue — pack of 10</div>
+            <div class="cl-meta">Individual item · quantity 1</div>
+          </div>
+          <div class="cl-amt">Rs. 480<button type="button">Remove</button></div>
+        </div>
+        <div class="delivery-line"><span>Delivery charge: to be confirmed by the shop</span><span>—</span></div>
+        <div class="goods"><span>Goods total</span><span class="big">Rs. 27,360</span></div>
+      </div>
+      <p class="cap">FR39, FR40 — the same pack added twice arrives as two independent lines with their own ticks, labelled so they can be told apart at a glance. Lines never merge; items do.</p>
+    </div>
+
+    <div class="state">
+      <div class="state-h"><span class="k">State 6</span> The 20 cap, on an item</div>
+      <div class="card">
+        <div class="title-row" style="margin-bottom:0">
+          <span class="cbwrap"><input type="checkbox" checked aria-label="Ballpoint Pens, Blue — pack of 10"></span>
+          <span>
+            <span class="t-name">Ballpoint Pens, Blue — pack of 10<span class="t-ed">Individual item · Rs. 480 each</span></span>
+            <span class="t-foot">
+              <span class="stepper">
+                <button type="button" aria-label="Fewer packs of pens">−</button>
+                <span class="qty">20</span>
+                <button type="button" disabled aria-describedby="capmsg" aria-label="More packs of pens — maximum of 20 reached">+</button>
+              </span>
+              <span class="line-total">Rs. 9,600<small>20 × 480</small></span>
+            </span>
+            <span class="reason" id="capmsg">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.5 7V5.5a3.5 3.5 0 1 1 7 0V7h.5A1 1 0 0 1 13 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5Zm1.5 0h4V5.5a2 2 0 1 0-4 0V7Z"/></svg>
+              <span><b>20 is our limit per line.</b> Adding this item again adjusts this same line, so the cap holds. Ring the shop for anything bigger.</span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <p class="cap">FR32, FR37 — the plus is disabled with the cap stated in words, and the copy closes the loophole of adding the item twice. Same explain-don't-refuse pattern as the locked title.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESPONSIVE PROOF ============================ -->
+<section class="sec">
+  <h2>4 · Same surface, two widths</h2>
+  <p class="sec-lede">
+    The pack screen is the surface that has to survive both. On the phone it is one column with the total
+    fixed to the bottom edge. On a laptop the total lifts out into a navy rail that stays beside the list, the
+    stepper and line total move onto the same row as the title, and nothing is hidden behind a tap.
+  </p>
+
+  <div class="resp">
+    <div>
+      <div class="phone" style="width:322px">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8:41 pm</span><span>72%</span></div>
+          <div class="app-top" style="padding:10px 12px 12px">
+            <span class="who"><span class="kicker">Grade 5 · Greenfield</span><span class="title">Prescribed Set</span></span>
+          </div>
+          <div class="count-strip" style="padding:12px 14px 6px"><span>6 of 8 titles</span><span>7 books</span></div>
+          <ul class="titles" style="padding:0 14px">
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked aria-label="English Pupil's Book 5"></span>
+              <span><span class="t-name">English Pupil's Book 5<span class="t-ed">3rd Edition · Rs. 1,450</span></span>
+              <span class="t-foot"><span class="stepper"><button type="button" aria-label="Fewer">−</button><span class="qty">1</span><button type="button" aria-label="More">+</button></span><span class="line-total">Rs. 1,450</span></span></span>
+            </li>
+            <li class="title-row">
+              <span class="cbwrap"><input type="checkbox" checked aria-label="School Atlas of the World"></span>
+              <span><span class="t-name">School Atlas of the World<span class="t-ed">8th Edition · Rs. 2,250</span></span>
+              <span class="t-foot"><span class="stepper"><button type="button" aria-label="Fewer">−</button><span class="qty">2</span><button type="button" aria-label="More">+</button></span><span class="line-total">Rs. 4,500</span></span></span>
+            </li>
+            <li class="title-row off">
+              <span class="cbwrap"><input type="checkbox" aria-label="Environmental Studies 5"></span>
+              <span><span class="t-name">Environmental Studies 5<span class="t-ed">2026 Edition · Rs. 1,120</span></span>
+              <span class="t-foot"><span class="owned">Dropped</span><span class="line-total">Rs. 0</span></span></span>
+            </li>
+          </ul>
+          <div class="totalbar">
+            <div class="tt"><span><span class="lbl">Pack total</span><div class="amt">Rs. 9,320</div></span></div>
+            <button class="cta" type="button">Add this pack to cart</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>376px.</b> One column. Total pinned to the bottom, thumb-reachable, always current.</p>
+    </div>
+
+    <div style="flex:1 1 620px; min-width:320px">
+      <div class="browser">
+        <div class="browser-chrome">
+          <span class="dots"><i class="dot1"></i><i class="dot2"></i><i class="dot3"></i></span>
+          <span class="url"><b>booklist.bonto.run</b>/packs/grade-5-prescribed-set</span>
+        </div>
+        <div class="browser-body">
+          <div class="desk-pack">
+            <div class="dp-list">
+              <p style="font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--slate-600)">Greenfield International · Grade 5</p>
+              <h3 style="margin-top:6px">Grade 5 Prescribed Set</h3>
+              <p class="hint" style="margin:14px 0 6px">Everything on the list is already ticked. Untick anything you already have at home.</p>
+              <div class="dp-row">
+                <span class="cbwrap"><input type="checkbox" checked aria-label="English Pupil's Book 5, 3rd Edition"></span>
+                <span><span class="t-name">English Pupil's Book 5<span class="t-ed">3rd Edition · Rs. 1,450 each</span></span></span>
+                <span class="stepper"><button type="button" aria-label="Fewer">−</button><span class="qty">1</span><button type="button" aria-label="More">+</button></span>
+                <span class="line-total">Rs. 1,450</span>
+              </div>
+              <div class="dp-row">
+                <span class="cbwrap"><input type="checkbox" checked aria-label="School Atlas of the World, 8th Edition"></span>
+                <span><span class="t-name">School Atlas of the World<span class="t-ed">8th Edition · Rs. 2,250 each</span></span></span>
+                <span class="stepper"><button type="button" aria-label="Fewer">−</button><span class="qty">2</span><button type="button" aria-label="More">+</button></span>
+                <span class="line-total">Rs. 4,500</span>
+              </div>
+              <div class="dp-row" style="opacity:.72">
+                <span class="cbwrap"><input type="checkbox" aria-label="Environmental Studies 5, 2026 Edition"></span>
+                <span><span class="t-name" style="text-decoration:line-through">Environmental Studies 5<span class="t-ed" style="text-decoration:none">2026 Edition · you already have this</span></span></span>
+                <span class="owned">Dropped</span>
+                <span class="line-total">Rs. 0</span>
+              </div>
+              <div class="dp-row">
+                <span class="cbwrap"><input type="checkbox" checked aria-label="Religion and Ethics 5, 2nd Edition"></span>
+                <span><span class="t-name">Religion &amp; Ethics 5<span class="t-ed">2nd Edition · Rs. 890 each</span></span></span>
+                <span class="stepper"><button type="button" aria-label="Fewer">−</button><span class="qty">1</span><button type="button" aria-label="More">+</button></span>
+                <span class="line-total">Rs. 890</span>
+              </div>
+            </div>
+            <aside class="dp-rail">
+              <span class="lbl">Pack total</span>
+              <div class="amt">Rs. 9,320</div>
+              <ul>
+                <li><span>Titles ticked</span><b>6 of 8</b></li>
+                <li><span>Books in all</span><b>7</b></li>
+                <li><span>Dropped by you</span><b>2</b></li>
+                <li><span>Delivery</span><b>Set on the call</b></li>
+              </ul>
+              <button class="cta" type="button" style="margin-top:18px">Add this pack to cart</button>
+              <p class="stickynote">This rail stays with you as you scroll. The figure changes the moment you tick, untick, or step a quantity — no page reloads.</p>
+            </aside>
+          </div>
+        </div>
+      </div>
+      <p class="cap" style="max-width:80ch"><b>1120px.</b> Two columns. Steppers and line totals sit on the title row, the running total becomes a sticky navy rail, and the primary action lives where the eye already is. Same content, same rules, no phone-shaped page stretched across a laptop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PALETTE + A11Y ============================== -->
+<section class="sec">
+  <h2>5 · The palette, if you pick this</h2>
+  <div class="sw-grid">
+    <div class="sw"><div class="chipc" style="background:#0B1B33"></div><div class="meta">Navy 900<small>#0B1B33</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#12294A"></div><div class="meta">Navy 800<small>#12294A</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#1B3A66"></div><div class="meta">Navy 700<small>#1B3A66</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#2E5891"></div><div class="meta">Navy 500<small>#2E5891</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#E8A61A"></div><div class="meta">Mustard 500<small>#E8A61A</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#C98A0E"></div><div class="meta">Mustard 600<small>#C98A0E</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#FDF0D2"></div><div class="meta">Mustard 100<small>#FDF0D2</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#FFFBF2"></div><div class="meta">Cream page<small>#FFFBF2</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#4A5A72"></div><div class="meta">Slate 600<small>#4A5A72</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#8A7C61"></div><div class="meta">Control edge<small>#8A7C61</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#D7CDB8"></div><div class="meta">Soft rule<small>#D7CDB8</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#B3261E"></div><div class="meta">Danger<small>#B3261E</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#146B45"></div><div class="meta">Success<small>#146B45</small></div></div>
+    <div class="sw"><div class="chipc" style="background:#8A5A00"></div><div class="meta">Attempted<small>#8A5A00</small></div></div>
+  </div>
+
+  <div class="a11y">
+    <h3 style="font-size:17px">Accessibility, stated not assumed</h3>
+    <ul>
+      <li>Body text is navy #0B1B33 on cream #FFFBF2 at <b>14.5:1</b>; supporting text #4A5A72 at <b>6.8:1</b>.</li>
+      <li>The primary button carries <b>navy text on mustard at 7.3:1</b>. White on mustard is 2.1:1 and is banned in this direction — that is the trap the palette sets, and this is how it is avoided.</li>
+      <li>Every control boundary uses #8A7C61 at <b>4.0:1</b> against cream, clearing the 3:1 floor. The pale #D7CDB8 rule is decorative and never outlines a control.</li>
+      <li>Focus is a 3px #1B3A66 ring with a 2px offset gap so it reads on cream, on white and on mustard. The atlas checkbox in the hero shows it in its resting focused state.</li>
+      <li>Checkboxes and stepper buttons all sit in <b>44×44px</b> targets; primary actions are 52px tall.</li>
+      <li>No state is carried by colour alone: "Not called yet" is a hollow navy ring, "Called · no answer" is a filled amber chip with a timestamp, and both are labelled in words.</li>
+      <li>Motion implication: short, weighted transitions — a 120ms press that flattens the offset shadow, and totals that count rather than jump. Nothing that delays the vendor's call or Nimali's checkout, and all of it dropped under <code>prefers-reduced-motion</code>.</li>
+    </ul>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

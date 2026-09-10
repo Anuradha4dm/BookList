@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book List — Direction D: Editorial Calm</title>
+<style>
+/* ============================================================================
+   BOOK LIST — DESIGN DIRECTION D: "EDITORIAL CALM"
+   Books are the subject, so type carries the design. Hairlines instead of
+   cards, whitespace instead of containers, one quiet green for anything that
+   commits. Print sensibility applied to a phone.
+
+   ---- PALETTE (every concrete hex, liftable) --------------------------------
+   --page      #FCFCFA  page. Warm paper-white, a shade off pure white.
+   --page-2    #F4F3EE  recessed areas: totals foot, rails, quantity wells.
+   --white     #FFFFFF  the one true white, used only for the browser chrome.
+   --ink       #16181A  display type, titles, all figures.
+   --ink-mid   #55595E  standfirsts, editions, timestamps, supporting copy.
+   --green-700 #1F5145  the single accent: primary action, focus, ticked state.
+   --green-100 #E7EFEB  ticked-row wash, quiet informational band.
+   --green-50  #F2F7F4  section tint where a band is needed at all.
+   --rule      #D8D6D0  hairline rules and column dividers (decorative only).
+   --rule-str  #6E6B64  ALL control boundaries (checkbox, stepper, input).
+   --crimson   #8C2F39  errors and blocking notices.
+   --crimson-50 #FBF1F1 error band ground.
+   --ochre     #6F5411  cautionary copy: stale price, cold start, cap reached.
+   --ochre-50  #FAF3E3  caution band ground.
+
+   ---- CONTRAST REASONING (WCAG 2.2 AA) -------------------------------------
+   #16181A on #FCFCFA = 17.1:1 (needs 4.5). Supporting #55595E = 6.8:1, which
+   is why the standfirsts can be this light without dropping below AA.
+   #1F5145 on page = 8.7:1 as text; #FFFFFF on #1F5145 = 9.0:1, so the primary
+   button and the ticked checkbox both hold at any size.
+   #8C2F39 = 7.7:1 and #6F5411 = 6.9:1 on page — deliberately dark ochre rather
+   than a bright amber, because a pale caution colour is the usual AA failure in
+   editorial palettes.
+   Control edges use #6E6B64 = 5.1:1, far over the 3:1 UI floor. The #D8D6D0
+   hairline is decorative typography furniture and never bounds a control — this
+   is the whole trick that lets the page look this quiet and still pass.
+   Focus: 2px #1F5145 ring with a 3px page-coloured offset, so it reads against
+   the page, the green-100 wash and the green button alike.
+   Nothing relies on hue: "Not yet called" is set in italic with an open circle,
+   "Called 9.15 · no answer" is roman with a filled square and a time.
+   Touch: despite the airiness, every checkbox, stepper and action occupies at
+   least 44x44px. Whitespace is around the targets, never taken out of them.
+   ========================================================================== */
+
+:root{
+  --page:#FCFCFA; --page-2:#F4F3EE; --white:#FFFFFF;
+  --ink:#16181A; --ink-mid:#55595E;
+  --green-700:#1F5145; --green-100:#E7EFEB; --green-50:#F2F7F4;
+  --rule:#D8D6D0; --rule-str:#6E6B64;
+  --crimson:#8C2F39; --crimson-50:#FBF1F1;
+  --ochre:#6F5411; --ochre-50:#FAF3E3;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, Cambria, "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--page); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.7;
+}
+h1,h2,h3,h4{margin:0; font-weight:400; line-height:1.14; letter-spacing:-.008em}
+p{margin:0}
+button{font:inherit; color:inherit; cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:2px solid var(--green-700); outline-offset:3px}
+.focus-demo{outline:2px solid var(--green-700); outline-offset:3px}
+.smallcaps{font-family:var(--sans); font-size:10.5px; font-weight:600; letter-spacing:.19em;
+  text-transform:uppercase; color:var(--ink-mid)}
+.fig{font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+
+/* ---------- document shell -------------------------------------------- */
+.sheet{max-width:1180px; margin:0 auto; padding:64px 26px 110px}
+.doc-head{max-width:40ch}
+.doc-head .smallcaps{display:block; margin-bottom:26px}
+.doc-head h1{font-size:52px; line-height:1.06; letter-spacing:-.022em}
+.hairline{height:1px; background:var(--rule); border:0; margin:0}
+.rationale{margin-top:26px; max-width:64ch; font-size:19px; line-height:1.62; color:var(--ink-mid)}
+.rationale b{color:var(--ink); font-weight:400; box-shadow:inset 0 -.5em 0 var(--green-100)}
+.sec{margin-top:96px}
+.sec-head{display:flex; align-items:baseline; gap:20px; flex-wrap:wrap;
+  padding-bottom:14px; border-bottom:1px solid var(--rule)}
+.sec-head .no{font-family:var(--sans); font-size:11px; font-weight:600; letter-spacing:.16em;
+  color:var(--green-700)}
+.sec-head h2{font-size:31px}
+.sec-head .ref{margin-left:auto; font-family:var(--sans); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-mid)}
+.standfirst{margin:26px 0 42px; max-width:66ch; font-size:18px; line-height:1.66; color:var(--ink-mid)}
+.cap{font-family:var(--sans); font-size:12.5px; line-height:1.62; color:var(--ink-mid);
+  max-width:44ch; margin-top:22px; padding-top:14px; border-top:1px solid var(--rule)}
+.cap b{color:var(--ink); font-weight:600}
+.row{display:flex; flex-wrap:wrap; gap:52px; align-items:flex-start}
+
+/* ---------- devices ---------------------------------------------------- */
+.phone{width:382px; flex:0 0 auto; background:var(--page-2); border:1px solid var(--rule);
+  border-radius:4px; padding:14px}
+.phone-screen{background:var(--page); border:1px solid var(--rule); overflow:hidden}
+.statusbar{display:flex; justify-content:space-between; padding:9px 22px 7px;
+  font-family:var(--sans); font-size:10.5px; letter-spacing:.05em; color:var(--ink-mid)}
+.browser{flex:1 1 660px; min-width:320px; border:1px solid var(--rule); background:var(--page)}
+.browser-chrome{display:flex; align-items:center; gap:14px; background:var(--white);
+  border-bottom:1px solid var(--rule); padding:12px 18px}
+.dots{display:flex; gap:6px}
+.dots i{width:9px; height:9px; border-radius:50%; border:1px solid var(--rule-str)}
+.url{flex:1; font-family:var(--sans); font-size:11.5px; letter-spacing:.03em; color:var(--ink-mid);
+  border-bottom:1px solid var(--rule); padding-bottom:3px; white-space:nowrap; overflow:hidden}
+.url b{color:var(--ink); font-weight:600}
+.browser-body{overflow-x:auto}
+
+/* ---------- storefront ------------------------------------------------- */
+.masthead{display:flex; align-items:center; gap:16px; padding:16px 24px 18px;
+  border-bottom:1px solid var(--rule)}
+.icb{width:44px; height:44px; min-width:44px; display:grid; place-items:center;
+  border:1px solid var(--rule-str); border-radius:50%; color:var(--ink); background:transparent}
+.wordmark{flex:1; font-family:var(--serif); font-size:19px; letter-spacing:.01em}
+.wordmark span{display:inline-flex; align-items:center; gap:9px}
+.pack-open{padding:38px 24px 4px}
+.pack-open .kicker{display:block; margin-bottom:16px}
+.pack-open h3{font-size:34px; letter-spacing:-.02em}
+.pack-open .stand{margin-top:16px; font-size:16.5px; line-height:1.6; color:var(--ink-mid); max-width:30ch}
+.instruct{margin:30px 24px 0; padding:18px 0 0; border-top:1px solid var(--rule); font-size:16px;
+  line-height:1.6}
+.instruct em{font-style:italic}
+.tally{display:flex; justify-content:space-between; align-items:baseline; margin:34px 24px 4px}
+.tally .l{font-family:var(--sans); font-size:10.5px; font-weight:600; letter-spacing:.19em;
+  text-transform:uppercase; color:var(--ink-mid)}
+.tally .r{font-family:var(--sans); font-size:11.5px; letter-spacing:.09em; color:var(--ink-mid)}
+
+/* ---------- title list ------------------------------------------------- */
+.titles{list-style:none; margin:14px 0 0; padding:0}
+.t{display:grid; grid-template-columns:44px 1fr; gap:16px; padding:22px 24px;
+  border-top:1px solid var(--rule)}
+.t.on{background:var(--green-50)}
+.t.held{background:var(--green-100)}
+.cb{display:grid; place-items:center; min-width:44px; min-height:44px}
+input[type=checkbox]{appearance:none; -webkit-appearance:none; margin:0; width:23px; height:23px;
+  border:1px solid var(--rule-str); border-radius:50%; background:transparent;
+  display:grid; place-items:center}
+input[type=checkbox]:checked{background:var(--green-700); border-color:var(--green-700)}
+input[type=checkbox]:checked::after{content:""; width:10px; height:5px; margin-top:-2px;
+  border-left:1.8px solid #fff; border-bottom:1.8px solid #fff; transform:rotate(-45deg)}
+input[type=checkbox]:disabled{opacity:1; background:var(--green-700); border-color:var(--green-700)}
+.tn{font-size:19.5px; line-height:1.28; display:block; letter-spacing:-.006em}
+.te{display:block; font-family:var(--sans); font-size:11.5px; letter-spacing:.05em;
+  color:var(--ink-mid); margin-top:8px; text-transform:uppercase}
+.t.off .tn{color:var(--ink-mid); font-style:italic}
+.t.off .tn s{text-decoration-thickness:1px; text-decoration-color:var(--rule-str)}
+.tfoot{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px}
+.stepper{display:inline-flex; align-items:center; border:1px solid var(--rule-str)}
+.stepper button{width:44px; height:44px; min-width:44px; border:0; background:transparent;
+  font-family:var(--sans); font-size:17px; line-height:1; color:var(--ink)}
+.stepper .q{width:44px; height:44px; display:grid; place-items:center; background:var(--page-2);
+  border-left:1px solid var(--rule-str); border-right:1px solid var(--rule-str);
+  font-size:17px; font-variant-numeric:tabular-nums}
+.stepper button[disabled]{color:#9A9790; cursor:not-allowed}
+.lt{font-size:19px; white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums}
+.lt small{display:block; font-family:var(--sans); font-size:10.5px; letter-spacing:.06em;
+  color:var(--ink-mid); margin-top:4px}
+.dropped{font-family:var(--sans); font-size:11.5px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-mid)}
+.aside{margin-top:16px; padding-left:16px; border-left:2px solid var(--green-700);
+  font-size:15.5px; line-height:1.58; color:var(--ink)}
+.aside.ochreside{border-left-color:var(--ochre); color:var(--ochre)}
+.aside b{font-weight:400; font-style:italic}
+
+/* ---------- total ------------------------------------------------------ */
+.total{border-top:1px solid var(--rule-str); background:var(--page-2); padding:28px 24px 30px}
+.total .l{display:block; margin-bottom:8px}
+.total .amt{font-size:44px; letter-spacing:-.028em; line-height:1; font-variant-numeric:tabular-nums}
+.total .sub{font-family:var(--sans); font-size:11.5px; letter-spacing:.07em; color:var(--ink-mid); margin-top:12px}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:52px;
+  padding:0 26px; border:1px solid var(--green-700); background:var(--green-700); color:#fff;
+  font-family:var(--sans); font-size:14.5px; font-weight:600; letter-spacing:.02em; border-radius:2px}
+.btn.line{background:transparent; color:var(--ink); border-color:var(--rule-str)}
+.btn.wide{width:100%; margin-top:22px}
+.btn.wide + .btn.wide{margin-top:10px}
+.btn.sm{min-height:44px; font-size:12.5px; padding:0 16px}
+.btn.text{background:none; border:0; color:var(--green-700); text-decoration:underline;
+  text-underline-offset:3px; min-height:44px; padding:0 6px; border-radius:0}
+.btn.text.warn{color:var(--crimson)}
+
+/* ---------- admin ----------------------------------------------------- */
+.admin{display:grid; grid-template-columns:224px 1fr; min-width:960px}
+.anav{border-right:1px solid var(--rule); padding:26px 20px 40px}
+.anav .wm{font-size:18px; display:flex; align-items:center; gap:9px; padding-bottom:6px}
+.anav .nl{display:block; margin:28px 0 6px}
+.anav a{display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-height:44px;
+  color:var(--ink); text-decoration:none; font-size:16px; border-bottom:1px solid var(--rule);
+  padding:0 0 2px}
+.anav a:last-child{border-bottom:0}
+.anav a.on{color:var(--green-700); font-style:italic}
+.anav a .n{font-family:var(--sans); font-size:11px; letter-spacing:.06em; color:var(--ink-mid);
+  font-variant-numeric:tabular-nums}
+.amain{padding:34px 40px 52px; min-width:0}
+.amast{display:flex; align-items:flex-end; justify-content:space-between; gap:28px; flex-wrap:wrap}
+.amast h3{font-size:38px; letter-spacing:-.022em}
+.amast .stand{margin-top:14px; font-size:17px; color:var(--ink-mid); max-width:52ch}
+.summary{margin:38px 0 0; padding:26px 0; border-top:1px solid var(--rule-str); border-bottom:1px solid var(--rule)}
+.summary .line{font-size:21px; line-height:1.6; max-width:62ch}
+.summary .line b{font-weight:400; box-shadow:inset 0 -.45em 0 var(--green-100)}
+.tallies{display:flex; flex-wrap:wrap; gap:0; margin-top:24px}
+.ty{flex:1 1 132px; padding:0 20px 0 0; margin-right:20px; border-right:1px solid var(--rule)}
+.ty:last-child{border-right:0}
+.ty .n{font-size:32px; line-height:1; font-variant-numeric:tabular-nums}
+.ty .k{display:block; margin-top:9px}
+.grp{margin-top:52px}
+.grp-head{display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; padding-bottom:10px;
+  border-bottom:1px solid var(--rule-str)}
+.grp-head h4{font-size:22px}
+.grp-head .n{font-family:var(--sans); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--green-700)}
+.grp-head .note{margin-left:auto; font-family:var(--sans); font-size:12px; color:var(--ink-mid); font-style:normal}
+.ord{display:grid; grid-template-columns:96px 1.5fr 1.15fr 132px 176px auto; gap:20px;
+  align-items:center; padding:20px 0; border-bottom:1px solid var(--rule)}
+.oid{font-size:22px; font-variant-numeric:tabular-nums}
+.oid small{display:block; font-family:var(--sans); font-size:10.5px; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--ink-mid); margin-top:5px}
+.on1{font-size:18px}
+.on2{font-family:var(--sans); font-size:11.5px; letter-spacing:.04em; color:var(--ink-mid); margin-top:5px}
+.omoney{font-size:19px; text-align:right; font-variant-numeric:tabular-nums}
+.omoney small{display:block; font-family:var(--sans); font-size:10.5px; letter-spacing:.05em;
+  color:var(--ink-mid); margin-top:5px}
+.call{display:inline-flex; align-items:baseline; gap:9px; font-size:15.5px}
+.call.never{font-style:italic; color:var(--ink-mid)}
+.call.never .m{width:9px; height:9px; border-radius:50%; border:1px solid var(--ink-mid); display:inline-block}
+.call.tried{color:var(--ochre)}
+.call.tried .m{width:8px; height:8px; background:var(--ochre); display:inline-block}
+.call.ok{color:var(--green-700)}
+.call.ok .m{font-family:var(--sans); font-size:12px}
+.confirm{display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:24px 0 26px;
+  border-bottom:1px solid var(--rule); background:var(--green-50); margin:0 -18px; padding-left:18px; padding-right:18px}
+.confirm .say{font-size:16.5px; flex:1 1 240px; max-width:44ch}
+.mfield{display:inline-flex; align-items:center; border:1px solid var(--rule-str); min-height:48px}
+.mfield span{padding:0 12px; font-family:var(--sans); font-size:12px; letter-spacing:.06em;
+  color:var(--ink-mid); border-right:1px solid var(--rule-str); align-self:stretch; display:grid; place-items:center}
+.mfield input{border:0; background:transparent; width:104px; font-family:var(--serif); font-size:19px;
+  padding:0 14px; font-variant-numeric:tabular-nums}
+.mfield input:focus{outline:none}
+.freeze{flex:1 1 100%; font-family:var(--sans); font-size:12px; color:var(--ochre); letter-spacing:.02em}
+
+/* ---------- states ---------------------------------------------------- */
+.states{display:grid; grid-template-columns:repeat(auto-fit, minmax(324px,1fr)); gap:56px 44px}
+.st-h{padding-bottom:12px; border-bottom:1px solid var(--rule-str)}
+.st-h .no{display:block; margin-bottom:9px}
+.st-h h4{font-size:24px}
+.st-b{padding-top:24px}
+.empty{text-align:center; padding:44px 10px}
+.empty h4{font-size:26px; margin:22px 0 14px}
+.empty p{font-size:16.5px; color:var(--ink-mid); max-width:28ch; margin:0 auto 28px}
+.sk{height:11px; background:var(--page-2); margin:8px 0}
+.sk.w88{width:88%} .sk.w46{width:46%} .sk.w66{width:66%}
+.skr{display:grid; grid-template-columns:23px 1fr 56px; gap:16px; align-items:center;
+  padding:20px 0; border-top:1px solid var(--rule)}
+.skb{width:23px; height:23px; border-radius:50%; background:var(--page-2)}
+.notice{padding:22px 24px; border-left:3px solid}
+.notice.err{border-color:var(--crimson); background:var(--crimson-50)}
+.notice.warn{border-color:var(--ochre); background:var(--ochre-50)}
+.notice.calm{border-color:var(--green-700); background:var(--green-100)}
+.notice h5{margin:0; font-size:20px; font-weight:400; letter-spacing:-.01em}
+.notice.err h5{color:var(--crimson)}
+.notice.warn h5{color:var(--ochre)}
+.notice p{margin-top:12px; font-size:16px; line-height:1.6}
+.notice .acts{display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; align-items:center}
+.cl{display:grid; grid-template-columns:1fr auto; gap:18px; padding:22px 0; border-top:1px solid var(--rule)}
+.cl-lab{display:block; margin-bottom:9px}
+.cl-lab.acc{color:var(--green-700)}
+.cl-n{font-size:19px; line-height:1.3}
+.cl-m{font-family:var(--sans); font-size:11.5px; letter-spacing:.04em; color:var(--ink-mid); margin-top:8px}
+.cl-a{font-size:19px; text-align:right; font-variant-numeric:tabular-nums}
+.deliv{display:flex; justify-content:space-between; gap:16px; padding:20px 0; margin-top:4px;
+  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); font-size:16px; color:var(--ink-mid)}
+.goods{display:flex; justify-content:space-between; align-items:baseline; padding-top:22px}
+.goods .l{font-size:17px}
+.goods .big{font-size:34px; letter-spacing:-.026em; font-variant-numeric:tabular-nums}
+
+/* ---------- responsive ------------------------------------------------ */
+.resp{display:flex; gap:52px; align-items:flex-start; flex-wrap:wrap}
+.dpack{display:grid; grid-template-columns:1fr 322px; min-width:800px}
+.dpl{padding:44px 48px 48px}
+.dpl h3{font-size:40px; letter-spacing:-.024em}
+.dtr{display:grid; grid-template-columns:44px 1fr 176px 132px; gap:24px; align-items:center;
+  padding:24px 0; border-top:1px solid var(--rule)}
+.rail{background:var(--page-2); border-left:1px solid var(--rule); padding:44px 32px}
+.rail .amt{font-size:42px; letter-spacing:-.028em; margin-top:10px; font-variant-numeric:tabular-nums}
+.rail dl{display:grid; grid-template-columns:1fr auto; gap:0; margin:34px 0 0}
+.rail dt{font-family:var(--sans); font-size:12px; color:var(--ink-mid); padding:12px 0;
+  border-top:1px solid var(--rule)}
+.rail dd{margin:0; padding:12px 0; border-top:1px solid var(--rule); text-align:right; font-size:16px}
+.railnote{font-family:var(--sans); font-size:12px; line-height:1.6; color:var(--ink-mid); margin-top:26px}
+
+/* ---------- palette --------------------------------------------------- */
+.sw-grid{display:flex; flex-wrap:wrap; gap:0; margin-top:26px; border-top:1px solid var(--rule)}
+.sw{width:150px; padding:16px 18px 18px 0; margin-right:18px; border-right:1px solid var(--rule)}
+.sw .c{height:56px; border:1px solid var(--rule)}
+.sw .m{margin-top:12px; font-family:var(--sans); font-size:12px; font-weight:600}
+.sw .m small{display:block; font-weight:400; letter-spacing:.08em; color:var(--ink-mid); margin-top:3px}
+.a11y{margin-top:56px; padding-top:26px; border-top:1px solid var(--rule-str)}
+.a11y h3{font-size:26px}
+.a11y ul{margin:22px 0 0; padding:0; list-style:none; max-width:74ch}
+.a11y li{padding:14px 0 14px 26px; border-top:1px solid var(--rule); font-size:16.5px;
+  line-height:1.6; position:relative}
+.a11y li::before{content:"—"; position:absolute; left:0; color:var(--green-700)}
+.a11y li b{font-weight:400; box-shadow:inset 0 -.45em 0 var(--green-100)}
+@media (max-width:900px){ .sheet{padding:38px 16px 68px} .doc-head h1{font-size:34px}
+  .rationale{font-size:17px} .sec{margin-top:60px} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header class="doc-head">
+  <span class="smallcaps">Book List · Direction D · Editorial calm</span>
+  <h1>Let the titles do the talking.</h1>
+</header>
+<p class="rationale">
+  No cards, no containers, no drop shadows — <b>hairlines and whitespace do all the dividing</b>, and the type
+  scale does all the ranking. A prescribed booklist is a piece of typography before it is a form, so the titles
+  are set at 19px in a serif and the running total at 44px, with one bottle green reserved for anything that
+  commits. It serves a parent who wants to <b>read the list carefully once</b> rather than skim it, and a vendor
+  whose screen should look like a well-set ledger — quietly expensive, which is exactly the "cut above the
+  market" the brief asks for.
+</p>
+
+<!-- ===================== HERO ======================================== -->
+<section class="sec">
+  <div class="sec-head">
+    <span class="no">I</span><h2>The pack screen</h2>
+    <span class="ref">Parent · phone · FR31–34 · NFR6</span>
+  </div>
+  <p class="standfirst">
+    The school's list arrives whole and already ticked. Nimali reads down it, takes off the two she has at home,
+    and puts the atlas up to two copies so the younger one has her own. Alongside it, the one rule the screen
+    enforces: with a single title left, the tick and the minus are held, and the page says so in a sentence
+    rather than going quiet.
+  </p>
+
+  <div class="row">
+    <!-- Phone 1 -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8.41 pm</span><span>Wi-Fi · 72%</span></div>
+          <div class="masthead">
+            <button class="icb" type="button" aria-label="Back to grades">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="wordmark"><span>
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true" focusable="false"><rect x="3" y="16" width="18" height="3.2" rx="1"/><rect x="4.8" y="10.8" width="14.4" height="3.2" rx="1"/><rect x="6.6" y="5.6" width="10.8" height="3.2" rx="1"/></svg>
+              Book List</span></span>
+            <button class="icb" type="button" aria-label="Your cart">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M4 5h3l2.4 10.5h9.1L21 8H8"/><circle cx="10" cy="19.5" r="1.5"/><circle cx="18.5" cy="19.5" r="1.5"/></svg>
+            </button>
+          </div>
+
+          <div class="pack-open">
+            <span class="smallcaps kicker">Greenfield International · Grade 5</span>
+            <h3>Grade 5<br>Prescribed Set</h3>
+            <p class="stand">The eight titles the school set for Term 1, in the editions it asked for.</p>
+          </div>
+
+          <p class="instruct">Everything is ticked to begin with. <em>Untick anything already on your shelf</em> — the total below follows you down. One to twenty copies of any title.</p>
+
+          <div class="tally"><span class="l">Six of eight titles</span><span class="r">7 books</span></div>
+
+          <ul class="titles">
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked aria-label="English Pupil's Book 5, 3rd Edition"></span>
+              <span>
+                <span class="tn">English Pupil's Book 5<span class="te">3rd Edition · Rs. 1,450 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer English Pupil's Book 5">−</button><span class="q">1</span><button type="button" aria-label="One more English Pupil's Book 5">+</button></span>
+                  <span class="lt">1,450</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked aria-label="Mathematics Workbook 5, Revised 2026"></span>
+              <span>
+                <span class="tn">Mathematics Workbook 5<span class="te">Revised 2026 · Rs. 1,180 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer Mathematics Workbook 5">−</button><span class="q">1</span><button type="button" aria-label="One more Mathematics Workbook 5">+</button></span>
+                  <span class="lt">1,180</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked class="focus-demo" aria-label="School Atlas of the World, 8th Edition"></span>
+              <span>
+                <span class="tn">School Atlas of the World<span class="te">8th Edition · Rs. 2,250 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer School Atlas of the World">−</button><span class="q">2</span><button type="button" aria-label="One more School Atlas of the World">+</button></span>
+                  <span class="lt">4,500<small>Two at 2,250</small></span>
+                </span>
+                <span class="aside">Two copies — the younger one will want her own.</span>
+              </span>
+            </li>
+
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked aria-label="Sinhala Reader Grade 5, 2nd Edition"></span>
+              <span>
+                <span class="tn">Sinhala Reader Grade 5<span class="te">2nd Edition · Rs. 980 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer Sinhala Reader Grade 5">−</button><span class="q">1</span><button type="button" aria-label="One more Sinhala Reader Grade 5">+</button></span>
+                  <span class="lt">980</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="Environmental Studies 5, 2026 Edition"></span>
+              <span>
+                <span class="tn"><s>Environmental Studies 5</s><span class="te">2026 Edition · Rs. 1,120 each</span></span>
+                <span class="tfoot"><span class="dropped">Already on the shelf</span><span class="lt">—</span></span>
+              </span>
+            </li>
+
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="Practical Science Activity Book 5, 4th Edition"></span>
+              <span>
+                <span class="tn"><s>Practical Science Activity Book 5</s><span class="te">4th Edition · Rs. 1,340 each</span></span>
+                <span class="tfoot"><span class="dropped">Already on the shelf</span><span class="lt">—</span></span>
+              </span>
+            </li>
+
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked aria-label="Religion and Ethics 5, 2nd Edition"></span>
+              <span>
+                <span class="tn">Religion &amp; Ethics 5<span class="te">2nd Edition · Rs. 890 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer Religion and Ethics 5">−</button><span class="q">1</span><button type="button" aria-label="One more Religion and Ethics 5">+</button></span>
+                  <span class="lt">890</span>
+                </span>
+              </span>
+            </li>
+
+            <li class="t on">
+              <span class="cb"><input type="checkbox" checked aria-label="Handwriting Book 5, ruled, 80 pages"></span>
+              <span>
+                <span class="tn">Handwriting Book 5<span class="te">Ruled, 80pp · Rs. 320 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" aria-label="One fewer Handwriting Book 5">−</button><span class="q">1</span><button type="button" aria-label="One more Handwriting Book 5">+</button></span>
+                  <span class="lt">320</span>
+                </span>
+              </span>
+            </li>
+          </ul>
+
+          <div class="total">
+            <span class="smallcaps l">Pack total</span>
+            <div class="amt">Rs. 9,320</div>
+            <div class="sub">Six titles · seven books · two taken off</div>
+            <button class="btn wide" type="button">Add this pack to cart</button>
+            <button class="btn line wide" type="button">Look at another grade</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>FR31–FR34, set rather than boxed.</b> Titles at 19.5px in the serif; editions demoted to 11.5px letterspaced sans so the eye ranks them instantly. Unticked titles stay on the page in italic with a rule through them — the decision remains visible and reversible. Line totals sit right, the running total is the largest figure on the screen.</p>
+    </div>
+
+    <!-- Phone 2 -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8.44 pm</span><span>Wi-Fi · 71%</span></div>
+          <div class="masthead">
+            <button class="icb" type="button" aria-label="Back to grades">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="wordmark"><span>
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true" focusable="false"><rect x="3" y="16" width="18" height="3.2" rx="1"/><rect x="4.8" y="10.8" width="14.4" height="3.2" rx="1"/><rect x="6.6" y="5.6" width="10.8" height="3.2" rx="1"/></svg>
+              Book List</span></span>
+          </div>
+
+          <div class="pack-open">
+            <span class="smallcaps kicker">One title remaining</span>
+            <h3>Just the atlas,<br>then.</h3>
+            <p class="stand">A pack can be a single book. Take the rest off and this is simply the one title you came for.</p>
+          </div>
+
+          <div class="tally"><span class="l">One of eight titles</span><span class="r">1 book</span></div>
+
+          <ul class="titles">
+            <li class="t held">
+              <span class="cb"><input type="checkbox" checked disabled aria-describedby="lockmsg" aria-label="School Atlas of the World, 8th Edition — held, the last remaining title"></span>
+              <span>
+                <span class="tn">School Atlas of the World<span class="te">8th Edition · Rs. 2,250 each</span></span>
+                <span class="tfoot">
+                  <span class="stepper"><button type="button" disabled aria-label="One fewer — held, this is the last remaining title">−</button><span class="q">1</span><button type="button" aria-label="One more School Atlas of the World">+</button></span>
+                  <span class="lt">2,250</span>
+                </span>
+                <span class="aside" id="lockmsg">
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true" focusable="false" style="vertical-align:-1px"><path d="M4.5 7V5.5a3.5 3.5 0 1 1 7 0V7h.5A1 1 0 0 1 13 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5Zm1.5 0h4V5.5a2 2 0 1 0-4 0V7Z"/></svg>
+                  <b>Held, because a pack needs one title.</b> Tick any book below and this opens again. The minus is held for the same reason, so you can't reach an empty pack by accident.
+                </span>
+              </span>
+            </li>
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="English Pupil's Book 5, 3rd Edition"></span>
+              <span><span class="tn"><s>English Pupil's Book 5</s><span class="te">3rd Edition · Rs. 1,450 each</span></span>
+              <span class="tfoot"><span class="dropped">Not in this order</span><span class="lt">—</span></span></span>
+            </li>
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="Mathematics Workbook 5, Revised 2026"></span>
+              <span><span class="tn"><s>Mathematics Workbook 5</s><span class="te">Revised 2026 · Rs. 1,180 each</span></span>
+              <span class="tfoot"><span class="dropped">Not in this order</span><span class="lt">—</span></span></span>
+            </li>
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="Sinhala Reader Grade 5, 2nd Edition"></span>
+              <span><span class="tn"><s>Sinhala Reader Grade 5</s><span class="te">2nd Edition · Rs. 980 each</span></span>
+              <span class="tfoot"><span class="dropped">Not in this order</span><span class="lt">—</span></span></span>
+            </li>
+            <li class="t off">
+              <span class="cb"><input type="checkbox" aria-label="Religion and Ethics 5, 2nd Edition"></span>
+              <span><span class="tn"><s>Religion &amp; Ethics 5</s><span class="te">2nd Edition · Rs. 890 each</span></span>
+              <span class="tfoot"><span class="dropped">Not in this order</span><span class="lt">—</span></span></span>
+            </li>
+          </ul>
+
+          <div class="total">
+            <span class="smallcaps l">Pack total</span>
+            <div class="amt">Rs. 2,250</div>
+            <div class="sub">The atlas on its own</div>
+            <button class="btn wide" type="button">Add this pack to cart</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>The locked last title (FR31, FR32, NFR4).</b> Held, not disabled: the row takes a green wash and the explanation is set as a marginal note against a green rule, the way a printed page annotates itself. The heading reframes the constraint as a legitimate route — this is how someone buys one book, per FR23.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ADMIN ======================================= -->
+<section class="sec">
+  <div class="sec-head">
+    <span class="no">II</span><h2>The vendor's today list</h2>
+    <span class="ref">Admin · desktop · FR56 · FR57 · FR60 · FR61</span>
+  </div>
+  <p class="standfirst">
+    The count is written as a sentence before it is written as figures, because that is how the vendor says it
+    to himself over his tea. Below it, a typeset ledger: groups in pipeline order, generous rows, and no zebra
+    striping — the hairline and the space are enough. "Not yet called" is set in italic; "Called 9.15, no
+    answer" is roman and carries the time.
+  </p>
+
+  <div class="browser">
+    <div class="browser-chrome">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="url"><b>booklist.bonto.run</b>/admin</span>
+    </div>
+    <div class="browser-body">
+      <div class="admin">
+        <nav class="anav" aria-label="Admin sections">
+          <span class="wm">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true" focusable="false"><rect x="3" y="16" width="18" height="3.2" rx="1"/><rect x="4.8" y="10.8" width="14.4" height="3.2" rx="1"/><rect x="6.6" y="5.6" width="10.8" height="3.2" rx="1"/></svg>
+            Book List
+          </span>
+          <span class="smallcaps nl">Orders</span>
+          <a href="#" class="on">Today list <span class="n">11</span></a>
+          <a href="#">Delivered &amp; cancelled <span class="n">148</span></a>
+          <span class="smallcaps nl">Catalog</span>
+          <a href="#">Schools <span class="n">6</span></a>
+          <a href="#">Grades <span class="n">19</span></a>
+          <a href="#">Book master <span class="n">284</span></a>
+          <a href="#">Packs <span class="n">41</span></a>
+          <a href="#">Individual items <span class="n">33</span></a>
+          <span class="smallcaps nl">The shop</span>
+          <a href="#">Export a copy</a>
+          <a href="#">Password</a>
+        </nav>
+
+        <div class="amain">
+          <div class="amast">
+            <div>
+              <span class="smallcaps">Thursday, 4 December</span>
+              <h3 style="margin-top:14px">Today list</h3>
+              <p class="stand">Every order that has not reached Delivered or Cancelled, however long it has been sitting here.</p>
+            </div>
+            <button class="btn line sm" type="button">Export a copy</button>
+          </div>
+
+          <div class="summary">
+            <p class="line">This morning: <b>four orders awaiting the confirmation call</b>, two confirmed and waiting to be packed, one in processing, one on the table, <b>two ready to deliver</b> and <b>one with the partner</b>.</p>
+            <div class="tallies">
+              <div class="ty"><div class="n">4</div><span class="smallcaps k">Order is placed</span></div>
+              <div class="ty"><div class="n">2</div><span class="smallcaps k">Order confirmed</span></div>
+              <div class="ty"><div class="n">1</div><span class="smallcaps k">Processing</span></div>
+              <div class="ty"><div class="n">1</div><span class="smallcaps k">Packing the order</span></div>
+              <div class="ty"><div class="n">2</div><span class="smallcaps k">Ready to deliver</span></div>
+              <div class="ty"><div class="n">1</div><span class="smallcaps k">On delivery partner</span></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head">
+              <h4>Order Is Placed</h4><span class="n">Four to call</span>
+              <span class="note">The delivery price is agreed on this call and set in the same action.</span>
+            </div>
+
+            <div class="ord">
+              <div class="oid">#1042<small>8.41 pm yest.</small></div>
+              <div><div class="on1">Nimali Perera</div><div class="on2">WhatsApp 077 214 6630 · second 011 288 4471</div></div>
+              <div><div class="on2" style="margin:0">Four lines</div><div class="on1" style="font-size:15px">Two packs and a pack of pens</div></div>
+              <div class="omoney">20,960<small>Goods</small></div>
+              <div><span class="call never"><span class="m"></span>Not yet called</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+            <div class="confirm">
+              <p class="say">She answered and agreed the figure. Type the delivery price; confirming writes both at once.</p>
+              <span class="mfield"><span>Rs.</span><input type="text" value="450" inputmode="numeric" aria-label="Delivery price for order 1042"></span>
+              <button class="btn sm" type="button">Set Order Confirmed</button>
+              <button class="btn text" type="button">No answer — record the attempt</button>
+              <span class="freeze">Confirming freezes the order for good, this figure included. A mistyped charge can only be undone by cancelling and asking her to place it again.</span>
+            </div>
+
+            <div class="ord">
+              <div class="oid">#1041<small>7.58 pm yest.</small></div>
+              <div><div class="on1">Dilhani Fernando</div><div class="on2">WhatsApp 071 909 3312 · no second number</div></div>
+              <div><div class="on2" style="margin:0">One line</div><div class="on1" style="font-size:15px">Grade 1 Starter Set</div></div>
+              <div class="omoney">6,140<small>Goods</small></div>
+              <div><span class="call tried"><span class="m"></span>Called 9.15 · no answer</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+
+            <div class="ord">
+              <div class="oid">#1040<small>6.12 pm yest.</small></div>
+              <div><div class="on1">Ruwan Jayasuriya</div><div class="on2">WhatsApp 076 445 0198</div></div>
+              <div><div class="on2" style="margin:0">Two lines</div><div class="on1" style="font-size:15px">Grade 8 Prescribed Set</div></div>
+              <div class="omoney">12,480<small>Goods</small></div>
+              <div><span class="call never"><span class="m"></span>Not yet called</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+
+            <div class="ord">
+              <div class="oid">#1039<small>Two days ago</small></div>
+              <div><div class="on1">Menaka Silva</div><div class="on2">WhatsApp 070 331 7726 · second 038 223 1140</div></div>
+              <div><div class="on2" style="margin:0">One line</div><div class="on1" style="font-size:15px">Items only, no pack</div></div>
+              <div class="omoney">4,320<small>Goods</small></div>
+              <div><span class="call tried"><span class="m"></span>Called twice · last 8.50</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h4>Order Confirmed</h4><span class="n">Two</span>
+              <span class="note">Priced and frozen. Ready to pack.</span></div>
+            <div class="ord">
+              <div class="oid">#1038<small>Confirmed 8.20 am</small></div>
+              <div><div class="on1">Anushka Rajapaksa</div><div class="on2">WhatsApp 077 655 2201</div></div>
+              <div><div class="on2" style="margin:0">Payable</div><div class="on1" style="font-size:15px">Goods 9,490 + delivery 450</div></div>
+              <div class="omoney">9,940<small>Payable</small></div>
+              <div><span class="call ok"><span class="m">✓</span>Price agreed</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+            <div class="ord">
+              <div class="oid">#1036<small>Confirmed yest.</small></div>
+              <div><div class="on1">Thilini Bandara</div><div class="on2">WhatsApp 072 118 4409</div></div>
+              <div><div class="on2" style="margin:0">Payable</div><div class="on1" style="font-size:15px">Goods 14,900 + delivery 400</div></div>
+              <div class="omoney">15,300<small>Payable</small></div>
+              <div><span class="call ok"><span class="m">✓</span>Price agreed</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h4>Ready To Deliver</h4><span class="n">Two</span>
+              <span class="note">The partner needs the WhatsApp number and the cash figure.</span></div>
+            <div class="ord">
+              <div class="oid">#1031<small>Packed yest.</small></div>
+              <div><div class="on1">Sanjeewa Kumara</div><div class="on2">WhatsApp 075 220 8814</div></div>
+              <div><div class="on2" style="margin:0">Cash on delivery</div><div class="on1" style="font-size:15px">Collect at the door</div></div>
+              <div class="omoney">7,180<small>Payable</small></div>
+              <div><span class="call ok"><span class="m">✓</span>Boxed and labelled</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+            <div class="ord">
+              <div class="oid">#1029<small>Packed yest.</small></div>
+              <div><div class="on1">Hasini Weerasinghe</div><div class="on2">WhatsApp 078 774 3390</div></div>
+              <div><div class="on2" style="margin:0">Cash on delivery</div><div class="on1" style="font-size:15px">Collect at the door</div></div>
+              <div class="omoney">11,650<small>Payable</small></div>
+              <div><span class="call ok"><span class="m">✓</span>Boxed and labelled</span></div>
+              <div><button class="btn line sm" type="button">Open</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h4>On Delivery Partner</h4><span class="n">One</span>
+              <span class="note">Marking Delivered is final and asks you to confirm.</span></div>
+            <div class="ord" style="border-bottom:0">
+              <div class="oid">#1024<small>Out since yest.</small></div>
+              <div><div class="on1">Kamal Dissanayake</div><div class="on2">WhatsApp 077 001 9982</div></div>
+              <div><div class="on2" style="margin:0">Cash to collect</div><div class="on1" style="font-size:15px">Rs. 5,900 at the door</div></div>
+              <div class="omoney">5,900<small>Payable</small></div>
+              <div><span class="call ok"><span class="m">✓</span>With the partner</span></div>
+              <div><button class="btn sm" type="button">Mark Delivered</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="max-width:86ch"><b>FR56, FR57, FR60, FR61.</b> The sentence and the figures say the same thing twice, deliberately — one for reading, one for counting. Call status is carried by style and wording as well as colour: italic with an open circle for never called, roman with a filled square and a timestamp for attempted. Confirming and pricing are a single action, with the freeze spelled out before he types.</p>
+</section>
+
+<!-- ===================== STATES ====================================== -->
+<section class="sec">
+  <div class="sec-head">
+    <span class="no">III</span><h2>States</h2>
+    <span class="ref">FR44 · FR49 · NFR4 · T7 · T8 · §9</span>
+  </div>
+  <p class="standfirst">Five places where the product has to speak. Each one is a short piece of writing set against a coloured rule, not a toast that disappears.</p>
+
+  <div class="states">
+    <div>
+      <div class="st-h"><span class="smallcaps no">State one</span><h4>An empty cart</h4></div>
+      <div class="st-b empty">
+        <svg viewBox="0 0 56 56" width="52" height="52" fill="none" stroke="var(--green-700)" stroke-width="1.4" aria-hidden="true" focusable="false">
+          <rect x="8" y="38" width="40" height="8"/><rect x="12" y="27" width="32" height="8"/><rect x="16" y="16" width="24" height="8"/>
+        </svg>
+        <h4>Nothing here yet</h4>
+        <p>Choose the school, then the grade, and the whole prescribed list opens in one page.</p>
+        <button class="btn" type="button">Choose a school</button>
+      </div>
+      <p class="cap">FR44 — the empty cart is written as an invitation back to discovery rather than a blank page.</p>
+    </div>
+
+    <div>
+      <div class="st-h"><span class="smallcaps no">State two</span><h4>Waking up</h4></div>
+      <div class="st-b">
+        <div class="notice warn">
+          <h5>The site is waking up</h5>
+          <p>It sleeps when nobody is here, so the first page of the evening takes a few seconds. Nothing is lost while you wait — your cart is held against your account, not in this browser, so it is the same cart on your laptop later.</p>
+        </div>
+        <div style="margin-top:26px">
+          <div class="skr"><span class="skb"></span><span><span class="sk w88"></span><span class="sk w46"></span></span><span class="sk"></span></div>
+          <div class="skr"><span class="skb"></span><span><span class="sk w66"></span><span class="sk w46"></span></span><span class="sk"></span></div>
+          <div class="skr"><span class="skb"></span><span><span class="sk w88"></span><span class="sk w46"></span></span><span class="sk"></span></div>
+        </div>
+      </div>
+      <p class="cap">§9 admits the auto-sleep cold start without specifying any UI. The wait is named, its cause given, and FR38's cross-device cart is used as the reassurance.</p>
+    </div>
+
+    <div>
+      <div class="st-h"><span class="smallcaps no">State three</span><h4>A price has moved</h4></div>
+      <div class="st-b">
+        <div class="notice warn">
+          <h5>One price has changed since you added it</h5>
+          <p><em>Mathematics Workbook 5, Revised 2026</em> is Rs. 1,240 today. It was Rs. 1,180 when you put it in the cart.</p>
+          <p>Nothing has been changed on your behalf and no edition has been substituted. Accept the new figure, or take the line out.</p>
+          <span class="acts">
+            <button class="btn sm" type="button">Accept Rs. 1,240</button>
+            <button class="btn text" type="button">Take the line out</button>
+          </span>
+        </div>
+        <div class="notice err" style="margin-top:26px">
+          <h5>One line cannot be ordered</h5>
+          <p><em>Practical Science Activity Book 5</em> is no longer part of the Grade 5 pack. Remove that line and the rest of the order goes through exactly as it stands.</p>
+          <span class="acts"><button class="btn text warn" type="button">Remove the line</button></span>
+        </div>
+        <div class="deliv"><span>Delivery charge: to be confirmed by the shop</span><span>—</span></div>
+        <div class="goods"><span class="l">Goods total</span><span class="big">Rs. 21,020</span></div>
+      </div>
+      <p class="cap">FR49 — a repriced line needs an explicit acceptance and an unavailable one blocks placement. Nothing is silently substituted or repriced. FR45's literal delivery line is reproduced word for word.</p>
+    </div>
+
+    <div>
+      <div class="st-h"><span class="smallcaps no">State four</span><h4>An error that explains itself</h4></div>
+      <div class="st-b">
+        <div class="notice err">
+          <h5>We could not cancel that order</h5>
+          <p>The shop confirmed <em>#1042</em> at 9.12 this morning, a minute or so before you tapped. Once an order is confirmed it cannot be cancelled here.</p>
+          <p>Nothing on your order has changed. The delivery charge is Rs. 450, the payable total is Rs. 21,410, and the books are coming to 42/3 Anderson Road, Nawala. If you would still rather stop it, the shop can do that with you.</p>
+          <span class="acts"><button class="btn sm" type="button">Open order #1042</button></span>
+        </div>
+        <div class="notice calm" style="margin-top:26px">
+          <h5>The same clash, seen from the shop</h5>
+          <p>Not applied. <em>#1039</em> was cancelled by Menaka Silva at 9.11, forty seconds before you pressed confirm, so no delivery price was written. Her reason: "found them second-hand."</p>
+          <span class="acts"><button class="btn text" type="button">Refresh the today list</button></span>
+        </div>
+      </div>
+      <p class="cap">T7, T8, NFR4 — whichever side loses the race is told what happened, when, and what the order actually says now. Never a bare failure.</p>
+    </div>
+
+    <div>
+      <div class="st-h"><span class="smallcaps no">State five</span><h4>Two children, one cart</h4></div>
+      <div class="st-b">
+        <div class="cl" style="border-top:0">
+          <div>
+            <span class="smallcaps cl-lab acc">Pack 1 of Grade 5</span>
+            <div class="cl-n">Grade 5 Prescribed Set</div>
+            <div class="cl-m">Six of eight titles · atlas ×2 · two already owned</div>
+          </div>
+          <div class="cl-a">9,320<div><button class="btn text warn" type="button" style="font-size:12px">Remove</button></div></div>
+        </div>
+        <div class="cl">
+          <div>
+            <span class="smallcaps cl-lab acc">Pack 1 of Grade 1</span>
+            <div class="cl-n">Grade 1 Starter Set</div>
+            <div class="cl-m">All six titles · nothing taken off</div>
+          </div>
+          <div class="cl-a">6,140<div><button class="btn text warn" type="button" style="font-size:12px">Remove</button></div></div>
+        </div>
+        <div class="cl">
+          <div>
+            <span class="smallcaps cl-lab acc">Pack 2 of Grade 1</span>
+            <div class="cl-n">Grade 1 Starter Set</div>
+            <div class="cl-m">Five of six titles · reader taken off · its own ticks</div>
+          </div>
+          <div class="cl-a">5,020<div><button class="btn text warn" type="button" style="font-size:12px">Remove</button></div></div>
+        </div>
+        <div class="cl">
+          <div>
+            <span class="smallcaps cl-lab">Individual item</span>
+            <div class="cl-n">Ballpoint Pens, Blue — pack of 10</div>
+            <div class="cl-m">Quantity one · adding it again raises this line rather than making a second</div>
+          </div>
+          <div class="cl-a">480<div><button class="btn text warn" type="button" style="font-size:12px">Remove</button></div></div>
+        </div>
+        <div class="deliv"><span>Delivery charge: to be confirmed by the shop</span><span>—</span></div>
+        <div class="goods"><span class="l">Goods total</span><span class="big">Rs. 20,960</span></div>
+      </div>
+      <p class="cap">FR39, FR40 — the same pack added twice becomes two lines with their own ticks, labelled so the second child's list never overwrites the first. Items behave in the opposite way and merge, which the line states rather than leaving to be discovered.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESPONSIVE ================================= -->
+<section class="sec">
+  <div class="sec-head">
+    <span class="no">IV</span><h2>One surface, two measures</h2>
+    <span class="ref">NFR1 · NFR6 · desktop first-class</span>
+  </div>
+  <p class="standfirst">
+    Editorial layout is really a decision about measure. On the phone the list is a single narrow column with
+    the total set beneath it. On the laptop the measure is held short rather than allowed to run the full
+    window, the quantity and line total step out into their own columns, and the total becomes a rail — the
+    same page, re-set for a wider sheet.
+  </p>
+
+  <div class="resp">
+    <div>
+      <div class="phone" style="width:330px">
+        <div class="phone-screen">
+          <div class="statusbar"><span>8.41 pm</span><span>72%</span></div>
+          <div class="pack-open" style="padding:26px 20px 4px">
+            <span class="smallcaps kicker">Greenfield · Grade 5</span>
+            <h3 style="font-size:26px">Prescribed Set</h3>
+          </div>
+          <div class="tally" style="margin:24px 20px 4px"><span class="l">Six of eight</span><span class="r">7 books</span></div>
+          <ul class="titles">
+            <li class="t on" style="padding:20px">
+              <span class="cb"><input type="checkbox" checked aria-label="English Pupil's Book 5"></span>
+              <span><span class="tn" style="font-size:18px">English Pupil's Book 5<span class="te">3rd Edition · 1,450 each</span></span>
+              <span class="tfoot"><span class="stepper"><button type="button" aria-label="One fewer">−</button><span class="q">1</span><button type="button" aria-label="One more">+</button></span><span class="lt">1,450</span></span></span>
+            </li>
+            <li class="t on" style="padding:20px">
+              <span class="cb"><input type="checkbox" checked aria-label="School Atlas of the World"></span>
+              <span><span class="tn" style="font-size:18px">School Atlas of the World<span class="te">8th Edition · 2,250 each</span></span>
+              <span class="tfoot"><span class="stepper"><button type="button" aria-label="One fewer">−</button><span class="q">2</span><button type="button" aria-label="One more">+</button></span><span class="lt">4,500</span></span></span>
+            </li>
+            <li class="t off" style="padding:20px">
+              <span class="cb"><input type="checkbox" aria-label="Environmental Studies 5"></span>
+              <span><span class="tn" style="font-size:18px"><s>Environmental Studies 5</s><span class="te">2026 Edition · 1,120 each</span></span>
+              <span class="tfoot"><span class="dropped">On the shelf</span><span class="lt">—</span></span></span>
+            </li>
+          </ul>
+          <div class="total" style="padding:24px 20px 26px">
+            <span class="smallcaps l">Pack total</span>
+            <div class="amt" style="font-size:38px">Rs. 9,320</div>
+            <button class="btn wide" type="button">Add this pack to cart</button>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>382px.</b> One column, one measure, the total set as the largest thing on the page.</p>
+    </div>
+
+    <div style="flex:1 1 620px; min-width:320px">
+      <div class="browser">
+        <div class="browser-chrome">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <span class="url"><b>booklist.bonto.run</b>/packs/grade-5-prescribed-set</span>
+        </div>
+        <div class="browser-body">
+          <div class="dpack">
+            <div class="dpl">
+              <span class="smallcaps">Greenfield International · Grade 5 · Term 1</span>
+              <h3 style="margin-top:16px">Grade 5 Prescribed Set</h3>
+              <p style="margin-top:18px;font-size:17px;color:var(--ink-mid);max-width:44ch">Every title is ticked to begin with. Untick anything already on the shelf at home; one to twenty copies of any title.</p>
+              <div class="dtr" style="margin-top:30px">
+                <span class="cb"><input type="checkbox" checked aria-label="English Pupil's Book 5, 3rd Edition"></span>
+                <span class="tn">English Pupil's Book 5<span class="te">3rd Edition · Rs. 1,450 each</span></span>
+                <span class="stepper"><button type="button" aria-label="One fewer">−</button><span class="q">1</span><button type="button" aria-label="One more">+</button></span>
+                <span class="lt">1,450</span>
+              </div>
+              <div class="dtr">
+                <span class="cb"><input type="checkbox" checked aria-label="School Atlas of the World, 8th Edition"></span>
+                <span class="tn">School Atlas of the World<span class="te">8th Edition · Rs. 2,250 each</span></span>
+                <span class="stepper"><button type="button" aria-label="One fewer">−</button><span class="q">2</span><button type="button" aria-label="One more">+</button></span>
+                <span class="lt">4,500<small>Two at 2,250</small></span>
+              </div>
+              <div class="dtr">
+                <span class="cb"><input type="checkbox" aria-label="Environmental Studies 5, 2026 Edition"></span>
+                <span class="tn" style="color:var(--ink-mid);font-style:italic"><s>Environmental Studies 5</s><span class="te" style="font-style:normal">2026 Edition · already on the shelf</span></span>
+                <span class="dropped">Taken off</span>
+                <span class="lt">—</span>
+              </div>
+              <div class="dtr">
+                <span class="cb"><input type="checkbox" checked aria-label="Religion and Ethics 5, 2nd Edition"></span>
+                <span class="tn">Religion &amp; Ethics 5<span class="te">2nd Edition · Rs. 890 each</span></span>
+                <span class="stepper"><button type="button" aria-label="One fewer">−</button><span class="q">1</span><button type="button" aria-label="One more">+</button></span>
+                <span class="lt">890</span>
+              </div>
+            </div>
+            <aside class="rail">
+              <span class="smallcaps">Pack total</span>
+              <div class="amt">Rs. 9,320</div>
+              <dl>
+                <dt>Titles ticked</dt><dd>6 of 8</dd>
+                <dt>Books altogether</dt><dd>7</dd>
+                <dt>Taken off by you</dt><dd>2</dd>
+                <dt>Delivery</dt><dd>On the call</dd>
+              </dl>
+              <button class="btn wide" type="button">Add this pack to cart</button>
+              <p class="railnote">The rail stays with you down the page and the figure re-sets on every tick and every step, without the page reloading beneath you. The list keeps its short measure at any window width — a booklist read across 1,400px would be unreadable, so it is not allowed to be.</p>
+            </aside>
+          </div>
+        </div>
+      </div>
+      <p class="cap" style="max-width:86ch"><b>1120px.</b> Four columns and a rail. The important decision here is what does <em>not</em> change: the measure of the title column is capped, so the laptop gains structure rather than width.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PALETTE ==================================== -->
+<section class="sec">
+  <div class="sec-head"><span class="no">V</span><h2>Palette and accessibility</h2></div>
+  <div class="sw-grid">
+    <div class="sw"><div class="c" style="background:#FCFCFA"></div><div class="m">Page<small>#FCFCFA</small></div></div>
+    <div class="sw"><div class="c" style="background:#F4F3EE"></div><div class="m">Page 2<small>#F4F3EE</small></div></div>
+    <div class="sw"><div class="c" style="background:#16181A"></div><div class="m">Ink<small>#16181A</small></div></div>
+    <div class="sw"><div class="c" style="background:#55595E"></div><div class="m">Ink mid<small>#55595E</small></div></div>
+    <div class="sw"><div class="c" style="background:#1F5145"></div><div class="m">Green 700<small>#1F5145</small></div></div>
+    <div class="sw"><div class="c" style="background:#E7EFEB"></div><div class="m">Green 100<small>#E7EFEB</small></div></div>
+    <div class="sw"><div class="c" style="background:#F2F7F4"></div><div class="m">Green 50<small>#F2F7F4</small></div></div>
+    <div class="sw"><div class="c" style="background:#6E6B64"></div><div class="m">Control edge<small>#6E6B64</small></div></div>
+    <div class="sw"><div class="c" style="background:#D8D6D0"></div><div class="m">Hairline<small>#D8D6D0</small></div></div>
+    <div class="sw"><div class="c" style="background:#8C2F39"></div><div class="m">Crimson<small>#8C2F39</small></div></div>
+    <div class="sw"><div class="c" style="background:#FBF1F1"></div><div class="m">Crimson 50<small>#FBF1F1</small></div></div>
+    <div class="sw"><div class="c" style="background:#6F5411"></div><div class="m">Ochre<small>#6F5411</small></div></div>
+    <div class="sw"><div class="c" style="background:#FAF3E3"></div><div class="m">Ochre 50<small>#FAF3E3</small></div></div>
+  </div>
+
+  <div class="a11y">
+    <h3>Accessibility, stated not assumed</h3>
+    <ul>
+      <li>Ink #16181A on page #FCFCFA is <b>17.1:1</b>; the standfirst grey #55595E is <b>6.8:1</b>, which is why it can be this light and still clear AA at 11.5px.</li>
+      <li>White on green #1F5145 is <b>9.0:1</b> and green on the page is <b>8.7:1</b>, so the single accent works as a button, as a tick, as a rule and as link text without a second tone.</li>
+      <li>The caution colour is a dark ochre #6F5411 at <b>6.9:1</b> rather than a bright amber. A pale caution tone is the standard way an editorial palette fails AA, so it is ruled out here on purpose.</li>
+      <li>Control boundaries all use #6E6B64 at <b>5.1:1</b>. The #D8D6D0 hairline is typographic furniture and never outlines a control — that single rule is what lets the page be this quiet and still pass at 3:1.</li>
+      <li>Focus is a 2px green ring with a 3px offset, legible on the page, on the green wash and on the green button. The atlas checkbox in the hero is shown in its focused state.</li>
+      <li><b>Whitespace is put around the targets, not taken out of them.</b> Checkboxes sit in 44px cells, stepper buttons are 44×44px, and primary buttons are 52px — the airiness comes from row padding, not from small controls.</li>
+      <li>Status is never hue alone: "Not yet called" is italic with an open circle, "Called 9.15 · no answer" is roman with a filled square and a time, "Price agreed" carries a tick.</li>
+      <li>Motion implication: slow and few. A 260ms crossfade as a row settles into its unticked state, a total that eases rather than snaps, no motion at all in the vendor's confirm path (NFR7). All suppressed under <code>prefers-reduced-motion</code>.</li>
+    </ul>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

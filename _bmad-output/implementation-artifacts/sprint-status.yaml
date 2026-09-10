@@ -1,0 +1,86 @@
+# generated: 2026-09-09T16:59:33
+# last_updated: 2026-09-09T16:59:33
+# project: BookList
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: 2026-09-09T16:59:33
+last_updated: 2026-09-09T16:59:33
+project: BookList
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Open the door — accounts for Nimali and Gothami
+  epic-1: backlog
+  1-1-project-scaffold-and-chalk-and-brass-shell: backlog
+  1-2-admin-seed-session-and-recovery-code: backlog
+  1-3-parent-register-login-and-auth-gates: backlog
+  1-4-parent-account: backlog
+  1-5-admin-password-and-parent-reset: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Stock the shop and browse the lists
+  epic-2: backlog
+  2-1-schools-and-grades: backlog
+  2-2-book-master: backlog
+  2-3-individual-items: backlog
+  2-4-packs-from-the-book-master: backlog
+  2-5-browse-packs-and-items-without-an-account: backlog
+  2-6-configure-a-pack-ticks-quantities-and-live-totals: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Build a cart that survives the evening
+  epic-3: backlog
+  3-1-add-a-configured-pack-to-the-cart: backlog
+  3-2-add-individual-items-to-the-same-cart: backlog
+  3-3-a-cart-that-persists-totals-and-can-be-emptied: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Capture the order and work the morning list
+  epic-4: backlog
+  4-1-checkout-address-delivery-line-note-and-stale-lines: backlog
+  4-2-place-order-snapshot-number-one-tap: backlog
+  4-3-my-orders-pipeline-cancel-and-reason: backlog
+  4-4-admin-orders-one-list-open-and-past: backlog
+  4-5-confirm-the-order-and-mark-the-call: backlog
+  4-6-advance-skip-forward-and-close-the-order: backlog
+  4-7-export-the-season: backlog
+  epic-4-retrospective: optional
