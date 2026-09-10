@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 
 type Migration = {
@@ -5,7 +8,17 @@ type Migration = {
   sql: string
 }
 
-const MIGRATIONS: Migration[] = []
+function loadMigration(filename: string): Migration {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const sibling = path.join(here, filename)
+  const fromSource = path.join(here, '..', '..', '..', 'db', 'migrations', filename)
+  const file = existsSync(sibling) ? sibling : fromSource
+  return { filename, sql: readFileSync(file, 'utf8') }
+}
+
+const MIGRATIONS: Migration[] = [
+  loadMigration('001_identity_admin_sessions_and_recovery.sql'),
+]
 
 export function runMigrations(db: Database.Database): void {
   db.exec(`

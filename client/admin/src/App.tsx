@@ -1,4 +1,5 @@
 import { createBrowserRouter, createRoutesFromElements, Route } from 'react-router'
+import { AdminGate } from './AdminGate'
 import { Shell } from './Shell'
 
 function Page({ title }: { title: string }) {
@@ -16,7 +17,7 @@ function BlankPage() {
 
 export const router = createBrowserRouter(
   createRoutesFromElements(
-    <>
+    <Route element={<AdminGate />}>
       <Route element={<Shell />}>
         <Route index element={<Page title="Orders" />} />
         <Route path="schools" element={<Page title="Schools" />} />
@@ -27,7 +28,7 @@ export const router = createBrowserRouter(
         <Route path="export" element={<Page title="Export" />} />
       </Route>
       <Route path="*" element={<BlankPage />} />
-    </>,
+    </Route>,
   ),
   { basename: '/admin' },
 )

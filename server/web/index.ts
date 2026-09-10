@@ -6,13 +6,15 @@ import { openDb } from './db.js'
 import { loadEnv } from './env.js'
 import { attachStatic, findRepoRoot } from './static.js'
 import { runMigrations } from '../db/migrations/run.js'
+import { seedAdmin } from '../identity/index.js'
 
 const env = loadEnv()
 
-function openAndMigrate() {
+async function openMigrateAndSeed() {
   try {
     const connection = openDb(env)
     runMigrations(connection)
+    await seedAdmin(connection, env)
     return connection
   } catch (error) {
     console.error(error instanceof Error ? error.message : error)
@@ -20,10 +22,10 @@ function openAndMigrate() {
   }
 }
 
-export const db = openAndMigrate()
+export const db = await openMigrateAndSeed()
 
 const app = express()
-app.use('/api', createApiRouter())
+app.use('/api', createApiRouter(db, env))
 
 const isDev = import.meta.url.endsWith('.ts')
 const repoRoot = findRepoRoot(path.dirname(fileURLToPath(import.meta.url)))

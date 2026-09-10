@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigation } from 'react-router'
 import { BrandLockup, Skeleton, Spinner } from '@booklist/ui'
+import { useAdminAuth } from './auth'
 
 const destinations = [
   { to: '/', label: 'Orders', end: true },
@@ -13,6 +14,7 @@ const destinations = [
 
 export function Shell() {
   const navigation = useNavigation()
+  const { signOut, logoutError } = useAdminAuth()
   const [cold, setCold] = useState(true)
 
   useEffect(() => {
@@ -32,6 +34,14 @@ export function Shell() {
     <div className="admin-shell">
       <aside className="admin-sidebar chrome">
         <BrandLockup />
+        <button type="button" className="nav-item" onClick={() => void signOut()}>
+          Log out
+        </button>
+        {logoutError ? (
+          <p className="form-error text-meta" role="alert">
+            {logoutError}
+          </p>
+        ) : null}
         <nav className="admin-sidebar-nav" aria-label="Admin">
           {destinations.map((item) => (
             <NavLink
