@@ -1,0 +1,18 @@
+{
+  "name": "booklist",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "client/*",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @booklist/server",
+    "build": "npm run build -w @booklist/storefront && npm run build -w @booklist/admin && npm run build -w @booklist/server",
+    "start": "npm run start -w @booklist/server",
+    "typecheck": "npm run typecheck -w @booklist/ui && npm run typecheck -w @booklist/storefront && npm run typecheck -w @booklist/admin && npm run typecheck -w @booklist/server"
+  }
+}
