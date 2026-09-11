@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode, type SVGProps } from 'react'
 import { NavLink, Outlet, useNavigation } from 'react-router'
 import { BrandLockup, Skeleton, Spinner } from '@booklist/ui'
+import { SessionProvider } from './auth'
 
 const destinations = [
   { to: '/', label: 'Browse', icon: BrowseIcon, end: true },
@@ -32,41 +33,43 @@ export function Shell() {
   }
 
   return (
-    <div className="storefront-shell">
-      <header className="storefront-header">
-        <BrandLockup />
-        <nav className="storefront-topnav" aria-label="Storefront">
+    <SessionProvider>
+      <div className="storefront-shell">
+        <header className="storefront-header">
+          <BrandLockup />
+          <nav className="storefront-topnav" aria-label="Storefront">
+            {destinations.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => navClass(isActive, 'nav')}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </header>
+        <main className="storefront-main">{body}</main>
+        <footer className="storefront-footer">
+          We store your name, delivery address, WhatsApp number, any second phone number you give
+          us, and your email so the shop can fulfil your order and reach you about it.
+        </footer>
+        <nav className="storefront-tabbar" aria-label="Storefront">
           {destinations.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              className={({ isActive }) => navClass(isActive, 'nav')}
+              className={({ isActive }) => navClass(isActive, 'tab')}
             >
+              <item.icon />
               {item.label}
             </NavLink>
           ))}
         </nav>
-      </header>
-      <main className="storefront-main">{body}</main>
-      <footer className="storefront-footer">
-        We store your name, delivery address, WhatsApp number, and email so the shop can fulfil
-        your order and reach you about it.
-      </footer>
-      <nav className="storefront-tabbar" aria-label="Storefront">
-        {destinations.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => navClass(isActive, 'tab')}
-          >
-            <item.icon />
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
+      </div>
+    </SessionProvider>
   )
 }
 

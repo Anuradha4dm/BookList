@@ -18,7 +18,15 @@ import {
   printRecoveryCode,
   verifySecret,
 } from './passwords.js'
+import { EmailTakenError, createParent, findParentByEmail, findParentById } from './parents.js'
 import { enableForeignKeys, normalizeEmail, type IdentityEnv } from './seed.js'
+import {
+  validateEmail,
+  validateMobile,
+  validateOptionalMobile,
+  validatePassword,
+  validateRequiredText,
+} from './validation.js'
 
 type AdminRow = {
   id: number
@@ -28,8 +36,16 @@ type AdminRow = {
 
 type SessionRow = {
   id: string
-  admin_id: number
+  admin_id: number | null
+  parent_id: number | null
   expires_at: string
+}
+
+/** Role is derived from the account a session points at, never stored on the session. */
+export type SessionAccount = {
+  role: 'admin' | 'parent'
+  id: number
+  email: string
 }
 
 class RecoveryConflictError extends Error {
@@ -39,8 +55,16 @@ class RecoveryConflictError extends Error {
   }
 }
 
-function sendError(res: Response, status: number, code: string, message: string): void {
-  res.status(status).json({ error: { code, message } })
+function sendError(
+  res: Response,
+  status: number,
+  code: string,
+  message: string,
+  field?: string,
+): void {
+  const error: { code: string; message: string; field?: string } = { code, message }
+  if (field) error.field = field
+  res.status(status).json({ error })
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -59,12 +83,29 @@ function safe(
   }
 }
 
-type SessionLookup =
-  | { status: 'ok'; admin: AdminRow; session: SessionRow }
+export type SessionLookup =
+  | { status: 'ok'; account: SessionAccount; session: SessionRow }
   | { status: 'none' }
   | { status: 'stale' }
 
-function lookupAdminSession(
+function accountForSession(
+  db: Database.Database,
+  session: SessionRow,
+): SessionAccount | undefined {
+  if (session.admin_id !== null) {
+    const admin = db.prepare('SELECT id, email FROM admins WHERE id = ?').get(session.admin_id) as
+      | { id: number; email: string }
+      | undefined
+    return admin ? { role: 'admin', id: admin.id, email: admin.email } : undefined
+  }
+  if (session.parent_id !== null) {
+    const parent = findParentById(db, session.parent_id)
+    return parent ? { role: 'parent', id: parent.id, email: parent.email } : undefined
+  }
+  return undefined
+}
+
+export function lookupSession(
   db: Database.Database,
   env: IdentityEnv,
   req: Request,
@@ -74,31 +115,29 @@ function lookupAdminSession(
   const sessionId = sessionIdFromCookie(raw, env.SESSION_SECRET)
   if (!sessionId) return { status: 'none' }
   const session = db
-    .prepare('SELECT id, admin_id, expires_at FROM sessions WHERE id = ?')
+    .prepare('SELECT id, admin_id, parent_id, expires_at FROM sessions WHERE id = ?')
     .get(sessionId) as SessionRow | undefined
   if (!session) return { status: 'stale' }
   if (Date.parse(session.expires_at) <= Date.now()) {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(session.id)
     return { status: 'stale' }
   }
-  const admin = db
-    .prepare('SELECT id, email, password_hash FROM admins WHERE id = ?')
-    .get(session.admin_id) as AdminRow | undefined
-  if (!admin) return { status: 'stale' }
-  return { status: 'ok', admin, session }
+  const account = accountForSession(db, session)
+  if (!account) return { status: 'stale' }
+  return { status: 'ok', account, session }
 }
 
-function rejectUnauthorized(req: Request, res: Response, lookup: SessionLookup): void {
+export function rejectUnauthorized(req: Request, res: Response, lookup: SessionLookup): void {
   if (lookup.status === 'stale') {
     clearSessionCookie(res, isHttps(req))
   }
   sendError(res, 401, 'unauthenticated', 'Sign in to continue.')
 }
 
-function createAdminSession(
+function createSession(
   db: Database.Database,
   env: IdentityEnv,
-  adminId: number,
+  account: SessionAccount,
   req: Request,
   res: Response,
 ): void {
@@ -106,14 +145,99 @@ function createAdminSession(
   const now = new Date()
   const expires = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000)
   db.prepare(
-    'INSERT INTO sessions (id, admin_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
-  ).run(sessionId, adminId, now.toISOString(), expires.toISOString())
+    'INSERT INTO sessions (id, admin_id, parent_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(
+    sessionId,
+    account.role === 'admin' ? account.id : null,
+    account.role === 'parent' ? account.id : null,
+    now.toISOString(),
+    expires.toISOString(),
+  )
   setSessionCookie(res, signedCookieValue(sessionId, env.SESSION_SECRET), isHttps(req))
 }
 
 export function createIdentityRouter(db: Database.Database, env: IdentityEnv): Router {
   enableForeignKeys(db)
   const router = Router()
+
+  router.post(
+    '/parents',
+    safe(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>
+
+      const name = validateRequiredText(body.name, 'name', 'name')
+      if (!name.ok) {
+        sendError(res, 400, 'invalid_input', name.error.message, name.error.field)
+        return
+      }
+      const deliveryAddress = validateRequiredText(
+        body.deliveryAddress,
+        'deliveryAddress',
+        'delivery address',
+      )
+      if (!deliveryAddress.ok) {
+        sendError(
+          res,
+          400,
+          'invalid_input',
+          deliveryAddress.error.message,
+          deliveryAddress.error.field,
+        )
+        return
+      }
+      const whatsapp = validateMobile(body.whatsapp, 'whatsapp', 'WhatsApp number')
+      if (!whatsapp.ok) {
+        sendError(res, 400, 'invalid_input', whatsapp.error.message, whatsapp.error.field)
+        return
+      }
+      const secondPhone = validateOptionalMobile(
+        body.secondPhone,
+        'secondPhone',
+        'second phone number',
+      )
+      if (!secondPhone.ok) {
+        sendError(res, 400, 'invalid_input', secondPhone.error.message, secondPhone.error.field)
+        return
+      }
+      const email = validateEmail(body.email)
+      if (!email.ok) {
+        sendError(res, 400, 'invalid_input', email.error.message, email.error.field)
+        return
+      }
+      const password = validatePassword(body.password)
+      if (!password.ok) {
+        sendError(res, 400, 'invalid_input', password.error.message, password.error.field)
+        return
+      }
+
+      let parent
+      try {
+        parent = await createParent(db, {
+          email: email.value,
+          password: password.value,
+          name: name.value,
+          deliveryAddress: deliveryAddress.value,
+          whatsapp: whatsapp.value,
+          secondPhone: secondPhone.value,
+        })
+      } catch (error) {
+        if (error instanceof EmailTakenError) {
+          sendError(
+            res,
+            409,
+            'email_taken',
+            'That email address already has an account. Log in instead.',
+            'email',
+          )
+          return
+        }
+        throw error
+      }
+
+      createSession(db, env, { role: 'parent', id: parent.id, email: parent.email }, req, res)
+      res.status(201).json({ role: 'parent', email: parent.email })
+    }),
+  )
 
   router.post(
     '/session',
@@ -125,12 +249,20 @@ export function createIdentityRouter(db: Database.Database, env: IdentityEnv): R
         return
       }
 
+      const normalized = normalizeEmail(email)
       const admin = db
         .prepare('SELECT id, email, password_hash FROM admins WHERE email = ?')
-        .get(normalizeEmail(email)) as AdminRow | undefined
-      const stored = admin?.password_hash ?? (await dummyPasswordHash())
+        .get(normalized) as AdminRow | undefined
+      const parent = admin ? undefined : findParentByEmail(db, normalized)
+
+      let account: SessionAccount | null = null
+      if (admin) account = { role: 'admin', id: admin.id, email: admin.email }
+      else if (parent) account = { role: 'parent', id: parent.id, email: parent.email }
+
+      const stored =
+        admin?.password_hash ?? parent?.password_hash ?? (await dummyPasswordHash())
       const matches = await verifySecret(password, stored)
-      if (!admin || !matches) {
+      if (!account || !matches) {
         sendError(
           res,
           401,
@@ -140,8 +272,8 @@ export function createIdentityRouter(db: Database.Database, env: IdentityEnv): R
         return
       }
 
-      createAdminSession(db, env, admin.id, req, res)
-      res.status(200).json({ role: 'admin', email: admin.email })
+      createSession(db, env, account, req, res)
+      res.status(200).json({ role: account.role, email: account.email })
     }),
   )
 
@@ -149,19 +281,19 @@ export function createIdentityRouter(db: Database.Database, env: IdentityEnv): R
     '/session',
     safe((req, res) => {
       res.setHeader('Cache-Control', 'no-store')
-      const current = lookupAdminSession(db, env, req)
+      const current = lookupSession(db, env, req)
       if (current.status !== 'ok') {
         rejectUnauthorized(req, res, current)
         return
       }
-      res.status(200).json({ role: 'admin', email: current.admin.email })
+      res.status(200).json({ role: current.account.role, email: current.account.email })
     }),
   )
 
   router.delete(
     '/session',
     safe((req, res) => {
-      const current = lookupAdminSession(db, env, req)
+      const current = lookupSession(db, env, req)
       if (current.status !== 'ok') {
         rejectUnauthorized(req, res, current)
         return

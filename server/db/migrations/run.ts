@@ -18,6 +18,7 @@ function loadMigration(filename: string): Migration {
 
 const MIGRATIONS: Migration[] = [
   loadMigration('001_identity_admin_sessions_and_recovery.sql'),
+  loadMigration('002_identity_parents_and_session_accounts.sql'),
 ]
 
 export function runMigrations(db: Database.Database): void {

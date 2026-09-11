@@ -12,6 +12,19 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
+/**
+ * `POST /api/session` accepts parents too and has already set a cookie by the time we read the
+ * role. Drop it, so the admin app is never signed out on screen with a live session in the
+ * browser.
+ */
+async function discardSession(): Promise<void> {
+  try {
+    await fetch('/api/session', { method: 'DELETE', credentials: 'include' })
+  } catch {
+    // The inline refusal below is the only message worth showing.
+  }
+}
+
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -67,7 +80,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         )
         return
       }
-      const body = (await response.json()) as { email?: string }
+      const body = (await response.json()) as { role?: string; email?: string }
+      if (body.role !== 'admin') {
+        await discardSession()
+        setEmailInvalid(true)
+        setPasswordInvalid(true)
+        setError('Those details are for the shop app. Log in there instead.')
+        return
+      }
       onSuccess(body.email ?? email)
     } catch {
       setEmailInvalid(false)
