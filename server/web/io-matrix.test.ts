@@ -7,6 +7,7 @@ import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
+import { profileDraftFromGet, profilePatchBody } from '../../client/storefront/src/accountProfile.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -88,6 +89,8 @@ const IDENTITY_PORT = String(18766)
 const identityBaseUrl = `http://127.0.0.1:${IDENTITY_PORT}`
 const PARENT_PORT = String(18769)
 const parentBaseUrl = `http://127.0.0.1:${PARENT_PORT}`
+const ACCOUNT_PORT = String(18771)
+const accountBaseUrl = `http://127.0.0.1:${ACCOUNT_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -1129,6 +1132,490 @@ describe('I/O & edge-case matrix', () => {
       assert.match(shell, /<SessionProvider>/)
       assert.match(shell, /second phone number/i)
       assert.match(css, /\.button-secondary\s*\{/)
+    })
+  })
+
+  describe('Parent account', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+
+    const nimali = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      secondPhone: '0717654321',
+      email: 'nimali.account@example.com',
+      password: 'evening-order',
+    }
+
+    const gothami = {
+      name: 'Gothami Silva',
+      deliveryAddress: '8 Lake Road, Kandy',
+      whatsapp: '0712345678',
+      secondPhone: '',
+      email: 'gothami.account@example.com',
+      password: 'morning-list',
+    }
+
+    function register(body: Record<string, unknown>): Promise<Response> {
+      return fetch(`${accountBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    }
+
+    function login(email: string, password: string): Promise<Response> {
+      return fetch(`${accountBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+    }
+
+    function getMe(cookie: string): Promise<Response> {
+      return fetch(`${accountBaseUrl}/api/parents/me`, {
+        headers: { cookie },
+      })
+    }
+
+    function patchMe(cookie: string, body: Record<string, unknown>): Promise<Response> {
+      return fetch(`${accountBaseUrl}/api/parents/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      })
+    }
+
+    type ParentSnapshot = {
+      id: number
+      email: string
+      password_hash: string
+      name: string
+      delivery_address: string
+      whatsapp: string
+      second_phone: string | null
+    }
+
+    function allParents(): ParentSnapshot[] {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return db
+          .prepare(
+            'SELECT id, email, password_hash, name, delivery_address, whatsapp, second_phone FROM parents ORDER BY id',
+          )
+          .all() as ParentSnapshot[]
+      } finally {
+        db.close()
+      }
+    }
+
+    function parentByEmail(email: string): ParentSnapshot {
+      const row = allParents().find((item) => item.email === email)
+      assert.ok(row, `missing parent ${email}`)
+      return row
+    }
+
+    async function signIn(account: { email: string; password: string }): Promise<string> {
+      const response = await login(account.email, account.password)
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-account-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ACCOUNT_PORT)
+      child = started.child
+      const first = await register(nimali)
+      assert.equal(first.status, 201)
+      const second = await register(gothami)
+      assert.equal(second.status, 201)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('loads the session parent profile and never returns a secret', async () => {
+      const cookie = await signIn(gothami)
+      const response = await getMe(cookie)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as Record<string, unknown>
+      assert.deepEqual(body, {
+        name: 'Gothami Silva',
+        deliveryAddress: '8 Lake Road, Kandy',
+        whatsapp: '+94712345678',
+        secondPhone: null,
+        email: 'gothami.account@example.com',
+      })
+      assert.equal('password_hash' in body, false)
+      assert.equal('password' in body, false)
+      assert.equal('id' in body, false)
+    })
+
+    it('saves contact fields on that parent only and stores phones as +947XXXXXXXX', async () => {
+      const cookie = await signIn(nimali)
+      const beforeOther = parentByEmail(gothami.email)
+
+      const response = await patchMe(cookie, {
+        name: 'Nimali J. Perera',
+        deliveryAddress: '45 Flower Road, Colombo',
+        whatsapp: '077 999 0011',
+        secondPhone: '+94 71-222 3333',
+        email: 'ignored@example.com',
+        id: parentByEmail(gothami.email).id,
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as Record<string, unknown>
+      assert.deepEqual(body, {
+        name: 'Nimali J. Perera',
+        deliveryAddress: '45 Flower Road, Colombo',
+        whatsapp: '+94779990011',
+        secondPhone: '+94712223333',
+        email: 'nimali.account@example.com',
+      })
+
+      const row = parentByEmail(nimali.email)
+      assert.equal(row.name, 'Nimali J. Perera')
+      assert.equal(row.delivery_address, '45 Flower Road, Colombo')
+      assert.equal(row.whatsapp, '+94779990011')
+      assert.equal(row.second_phone, '+94712223333')
+      assert.equal(row.email, 'nimali.account@example.com')
+      assert.deepEqual(parentByEmail(gothami.email), beforeOther)
+
+      const probe = await fetch(`${accountBaseUrl}/api/session`, { headers: { cookie } })
+      assert.equal(probe.status, 200)
+      const sessionBody = (await probe.json()) as Record<string, unknown>
+      assert.deepEqual(sessionBody, { role: 'parent', email: 'nimali.account@example.com' })
+    })
+
+    it('leaves the password hash unchanged when password is empty, omitted, or whitespace', async () => {
+      const cookie = await signIn(nimali)
+      const before = parentByEmail(nimali.email)
+      const contact = {
+        name: before.name,
+        deliveryAddress: before.delivery_address,
+        whatsapp: before.whatsapp,
+        secondPhone: before.second_phone,
+      }
+
+      const omitted = await patchMe(cookie, contact)
+      assert.equal(omitted.status, 200)
+      assert.equal(parentByEmail(nimali.email).password_hash, before.password_hash)
+
+      const empty = await patchMe(cookie, { ...contact, password: '' })
+      assert.equal(empty.status, 200)
+      assert.equal(parentByEmail(nimali.email).password_hash, before.password_hash)
+
+      const whitespace = await patchMe(cookie, { ...contact, password: '      ' })
+      assert.equal(whitespace.status, 200)
+      assert.equal(parentByEmail(nimali.email).password_hash, before.password_hash)
+
+      const still = await fetch(`${accountBaseUrl}/api/session`, { headers: { cookie } })
+      assert.equal(still.status, 200)
+      const body = (await still.json()) as { role: string }
+      assert.equal(body.role, 'parent')
+    })
+
+    it('keeps a null second phone null when PATCH sends an empty string', async () => {
+      const cookie = await signIn(gothami)
+      const before = parentByEmail(gothami.email)
+      assert.equal(before.second_phone, null)
+
+      const response = await patchMe(cookie, {
+        name: before.name,
+        deliveryAddress: before.delivery_address,
+        whatsapp: before.whatsapp,
+        secondPhone: '',
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as { secondPhone: string | null }
+      assert.equal(body.secondPhone, null)
+      assert.equal(parentByEmail(gothami.email).second_phone, null)
+    })
+
+    it('refuses invalid fields with one named field and writes nothing', async () => {
+      const cookie = await signIn(nimali)
+      const before = parentByEmail(nimali.email)
+      const contact = {
+        name: before.name,
+        deliveryAddress: before.delivery_address,
+        whatsapp: before.whatsapp,
+        secondPhone: before.second_phone,
+      }
+
+      const several = await patchMe(cookie, {
+        name: '   ',
+        deliveryAddress: '',
+        whatsapp: '0712345',
+        secondPhone: '12345',
+        password: 'x',
+      })
+      assert.equal(several.status, 400)
+      const severalBody = (await several.json()) as {
+        error: { code: string; message: string; field?: string }
+      }
+      assert.equal(severalBody.error.code, 'invalid_input')
+      assert.equal(severalBody.error.field, 'name')
+      assert.match(severalBody.error.message, /name/i)
+      assert.deepEqual(parentByEmail(nimali.email), before)
+
+      const cases: Array<[Record<string, unknown>, string, RegExp]> = [
+        [{ name: '   ' }, 'name', /name/i],
+        [{ deliveryAddress: '' }, 'deliveryAddress', /address/i],
+        [{ whatsapp: '0712345' }, 'whatsapp', /whatsapp/i],
+        [{ secondPhone: '12345' }, 'secondPhone', /second phone/i],
+        [{ password: 'short' }, 'password', /password/i],
+        [{ password: 'a'.repeat(129) }, 'password', /password/i],
+        [{ name: 12345 }, 'name', /name/i],
+      ]
+      for (const [override, field, names] of cases) {
+        const response = await patchMe(cookie, { ...contact, ...override })
+        assert.equal(response.status, 400, `expected 400 for ${JSON.stringify(override)}`)
+        const body = (await response.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(body.error.code, 'invalid_input')
+        assert.equal(body.error.field, field)
+        assert.match(body.error.message, names)
+        assert.deepEqual(parentByEmail(nimali.email), before)
+      }
+    })
+
+    it('rejects anonymous and stale cookies without reading a parent row', async () => {
+      const before = allParents()
+
+      const missing = await fetch(`${accountBaseUrl}/api/parents/me`)
+      assert.equal(missing.status, 401)
+      const missingBody = (await missing.json()) as { error: { code: string; message: string } }
+      assert.equal(missingBody.error.code, 'unauthenticated')
+      assert.match(missingBody.error.message, /[A-Za-z]/)
+      assert.equal(sidCookie(missing.headers), undefined)
+
+      const missingPatch = await patchMe('', {
+        name: 'Hacker',
+        deliveryAddress: 'Nowhere',
+        whatsapp: '0771234567',
+        secondPhone: '',
+      })
+      assert.equal(missingPatch.status, 401)
+      const missingPatchBody = (await missingPatch.json()) as { error: { code: string } }
+      assert.equal(missingPatchBody.error.code, 'unauthenticated')
+
+      const cookie = await signIn(nimali)
+      const sessionId = cookie.slice('booklist.sid='.length).split('.')[0]
+      assert.ok(sessionId)
+      const writer = new Database(dbPath)
+      try {
+        writer
+          .prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+          .run(new Date(Date.now() - 60_000).toISOString(), sessionId)
+      } finally {
+        writer.close()
+      }
+
+      const stalePatch = await patchMe(cookie, {
+        name: 'Hacker',
+        deliveryAddress: 'Nowhere',
+        whatsapp: '0771234567',
+        secondPhone: '',
+      })
+      assert.equal(stalePatch.status, 401)
+      const staleBody = (await stalePatch.json()) as { error: { code: string } }
+      assert.equal(staleBody.error.code, 'unauthenticated')
+      const cleared = sidCookie(stalePatch.headers)
+      assert.ok(cleared, 'a stale session must clear the cookie')
+      assert.match(cleared, /Max-Age=0/)
+
+      assert.deepEqual(allParents(), before)
+    })
+
+    it('stores a new scrypt hash, keeps this session, and requires the new password to log in', async () => {
+      const cookie = await signIn(nimali)
+      const before = parentByEmail(nimali.email)
+      const nextPassword = 'fresh-evening'
+      const sessionsBefore = new Database(dbPath, { readonly: true })
+      let sessionCount: number
+      try {
+        sessionCount = (
+          sessionsBefore.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }
+        ).n
+      } finally {
+        sessionsBefore.close()
+      }
+
+      const response = await patchMe(cookie, {
+        name: before.name,
+        deliveryAddress: before.delivery_address,
+        whatsapp: before.whatsapp,
+        secondPhone: before.second_phone,
+        password: nextPassword,
+      })
+      assert.equal(response.status, 200)
+
+      const after = parentByEmail(nimali.email)
+      assert.notEqual(after.password_hash, before.password_hash)
+      assert.match(after.password_hash, /^scrypt\$/)
+      assert.equal(after.password_hash.includes(nextPassword), false)
+      assert.equal(after.password_hash.includes(nimali.password), false)
+
+      const sessionsAfter = new Database(dbPath, { readonly: true })
+      try {
+        const count = (sessionsAfter.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number })
+          .n
+        assert.equal(count, sessionCount)
+      } finally {
+        sessionsAfter.close()
+      }
+
+      const stillMe = await getMe(cookie)
+      assert.equal(stillMe.status, 200)
+      const stillBody = (await stillMe.json()) as { email: string }
+      assert.equal(stillBody.email, nimali.email)
+
+      const oldLogin = await login(nimali.email, nimali.password)
+      assert.equal(oldLogin.status, 401)
+      const oldBody = (await oldLogin.json()) as { error: { code: string } }
+      assert.equal(oldBody.error.code, 'invalid_credentials')
+      assert.equal(sidCookie(oldLogin.headers), undefined)
+
+      const newLogin = await login(nimali.email, nextPassword)
+      assert.equal(newLogin.status, 200)
+      assert.ok(sidCookie(newLogin.headers))
+    })
+
+    it('refuses an admin session on GET and PATCH without touching parent rows', async () => {
+      const before = allParents()
+      const adminLogin = await login('owner@example.com', 'test-password')
+      assert.equal(adminLogin.status, 200)
+      const cookie = sidCookie(adminLogin.headers)
+      assert.ok(cookie)
+      const header = cookieHeader(cookie)
+
+      const get = await getMe(header)
+      assert.equal(get.status, 403)
+      const getBody = (await get.json()) as { error: { code: string; message: string } }
+      assert.equal(getBody.error.code, 'forbidden')
+      assert.match(getBody.error.message, /[A-Za-z]/)
+      assert.equal('name' in getBody, false)
+
+      const patch = await patchMe(header, {
+        name: 'Owner',
+        deliveryAddress: 'The shop',
+        whatsapp: '0771234567',
+        secondPhone: '',
+        password: 'should-not-apply',
+        id: parentByEmail(nimali.email).id,
+      })
+      assert.equal(patch.status, 403)
+      const patchBody = (await patch.json()) as { error: { code: string; message: string } }
+      assert.equal(patchBody.error.code, 'forbidden')
+      assert.match(patchBody.error.message, /[A-Za-z]/)
+
+      assert.deepEqual(allParents(), before)
+    })
+
+    it('keeps Account as the profile surface: read-only email, Save primary, Log out secondary', async () => {
+      const accountPage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'AccountPage.tsx'),
+        'utf8',
+      )
+      const app = await readFile(storefrontAppPath, 'utf8')
+      const auth = await readFile(path.join(repoRoot, 'client', 'storefront', 'src', 'auth.tsx'), 'utf8')
+      const http = await readFile(path.join(serverRoot, 'identity', 'http.ts'), 'utf8')
+
+      assert.match(app, /import \{ AccountPage \} from '\.\/AccountPage'/)
+      assert.match(app, /path="account" element=\{<AccountPage \/>\}/)
+      assert.doesNotMatch(auth, /parents\/me/)
+      assert.match(auth, /credentials: 'include'/)
+
+      assert.match(accountPage, /fetch\('\/api\/parents\/me'/)
+      assert.match(accountPage, /method: 'PATCH'/)
+      assert.match(accountPage, /credentials: 'include'/)
+      for (const id of [
+        'storefront-account-name',
+        'storefront-account-address',
+        'storefront-account-whatsapp',
+        'storefront-account-second-phone',
+        'storefront-account-email',
+        'storefront-account-password',
+      ]) {
+        assert.match(accountPage, new RegExp(`id="${id}"`))
+      }
+      assert.match(accountPage, /label="Name"/)
+      assert.match(accountPage, /label="Delivery address"/)
+      assert.match(accountPage, /label="WhatsApp number"/)
+      assert.match(accountPage, /label="Second phone \(optional\)"/)
+      assert.match(accountPage, /label="Email"/)
+      assert.match(accountPage, /New password \(optional\)/)
+      assert.match(accountPage, /readOnly/)
+      assert.match(accountPage, /button-primary/)
+      assert.match(accountPage, />\s*Save\s*</)
+      assert.match(accountPage, /button-secondary/)
+      assert.match(accountPage, /Log out/)
+      assert.equal((accountPage.match(/button-primary/g) ?? []).length, 1)
+      assert.match(accountPage, /setInvalidField\(asProfileField\(failure\.field\)\)/)
+      assert.doesNotMatch(accountPage, /setDraft\(EMPTY_DRAFT\)/)
+      assert.match(accountPage, /disabled=\{submitting\}/)
+      assert.match(accountPage, /controller\.signal\.aborted/)
+      assert.match(accountPage, /Log out, then sign in again/)
+
+      const getMeRoute = http.match(/router\.get\(\s*'\/parents\/me'[\s\S]*?router\.patch\(/)?.[0]
+      const patchMeRoute = http.match(/router\.patch\(\s*'\/parents\/me'[\s\S]*?router\.post\(/)?.[0]
+      assert.ok(getMeRoute, 'GET /parents/me must exist')
+      assert.ok(patchMeRoute, 'PATCH /parents/me must exist')
+      assert.match(getMeRoute, /lookupSession/)
+      assert.match(patchMeRoute, /lookupSession/)
+      assert.match(getMeRoute, /role !== 'parent'/)
+      assert.match(patchMeRoute, /role !== 'parent'/)
+      assert.ok(getMeRoute.indexOf("role !== 'parent'") < getMeRoute.indexOf('findParentById'))
+      assert.match(patchMeRoute, /saveParentProfile/)
+      assert.doesNotMatch(patchMeRoute, /DELETE FROM sessions/)
+      assert.doesNotMatch(getMeRoute, /DELETE FROM sessions/)
+      assert.match(http, /db\.prepare\('DELETE FROM sessions WHERE admin_id = \?'\)/)
+
+      const parentsSource = await readFile(path.join(serverRoot, 'identity', 'parents.ts'), 'utf8')
+      const saveStart = parentsSource.indexOf('export async function saveParentProfile')
+      assert.ok(saveStart >= 0)
+      const hashAt = parentsSource.indexOf('await hashSecret(password)', saveStart)
+      const txAt = parentsSource.indexOf('db.transaction', saveStart)
+      assert.ok(hashAt >= 0 && txAt >= 0 && hashAt < txAt, 'hash the password before any SQL write')
+    })
+
+    it('maps GET profile JSON onto the Account form and PATCH keys', () => {
+      const body = {
+        name: 'Gothami Silva',
+        deliveryAddress: '8 Lake Road, Kandy',
+        whatsapp: '+94712345678',
+        secondPhone: null,
+        email: 'gothami.account@example.com',
+      }
+      const draft = profileDraftFromGet(body, 'fallback@example.com')
+      assert.equal(draft.name, 'Gothami Silva')
+      assert.equal(draft.deliveryAddress, '8 Lake Road, Kandy')
+      assert.equal(draft.whatsapp, '+94712345678')
+      assert.equal(draft.secondPhone, '')
+      assert.equal(draft.email, 'gothami.account@example.com')
+      assert.equal(draft.password, '')
+      assert.equal('delivery_address' in draft, false)
+      assert.equal('second_phone' in draft, false)
+
+      const patch = profilePatchBody(draft)
+      assert.deepEqual(patch, {
+        name: 'Gothami Silva',
+        deliveryAddress: '8 Lake Road, Kandy',
+        whatsapp: '+94712345678',
+        secondPhone: '',
+        password: '',
+      })
+      assert.equal('delivery_address' in patch, false)
+      assert.equal('second_phone' in patch, false)
     })
   })
 

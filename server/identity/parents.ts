@@ -98,3 +98,49 @@ export async function createParent(db: Database.Database, input: NewParent): Pro
   if (!created) throw new Error('parent row vanished after insert')
   return created
 }
+
+export type ParentContact = {
+  name: string
+  deliveryAddress: string
+  whatsapp: string
+  secondPhone: string | null
+}
+
+export function updateParent(
+  db: Database.Database,
+  id: number,
+  contact: ParentContact,
+): ParentRow {
+  const result = db
+    .prepare(
+      `UPDATE parents SET name = ?, delivery_address = ?, whatsapp = ?, second_phone = ?
+       WHERE id = ?`,
+    )
+    .run(contact.name, contact.deliveryAddress, contact.whatsapp, contact.secondPhone, id)
+  if (result.changes !== 1) throw new Error('parent row vanished before update')
+  const updated = findParentById(db, id)
+  if (!updated) throw new Error('parent row vanished after update')
+  return updated
+}
+
+/** Hash first (if a password is given), then write contact and hash in one transaction. */
+export async function saveParentProfile(
+  db: Database.Database,
+  id: number,
+  contact: ParentContact,
+  password?: string,
+): Promise<ParentRow> {
+  const passwordHash = password !== undefined ? await hashSecret(password) : undefined
+  const apply = db.transaction((): ParentRow => {
+    const parent = updateParent(db, id, contact)
+    if (passwordHash === undefined) return parent
+    const result = db
+      .prepare('UPDATE parents SET password_hash = ? WHERE id = ?')
+      .run(passwordHash, id)
+    if (result.changes !== 1) throw new Error('parent row vanished before password update')
+    const updated = findParentById(db, id)
+    if (!updated) throw new Error('parent row vanished after password update')
+    return updated
+  })
+  return apply()
+}
