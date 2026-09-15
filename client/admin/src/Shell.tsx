@@ -10,6 +10,8 @@ const destinations = [
   { to: '/books', label: 'Book master', end: false },
   { to: '/packs', label: 'Packs', end: false },
   { to: '/items', label: 'Items', end: false },
+  { to: '/parents', label: 'Parents', end: false },
+  { to: '/settings', label: 'Settings', end: false },
 ] as const
 
 export function Shell() {

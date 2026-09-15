@@ -54,7 +54,7 @@ development_status:
   1-2-admin-seed-session-and-recovery-code: review
   1-3-parent-register-login-and-auth-gates: review
   1-4-parent-account: review
-  1-5-admin-password-and-parent-reset: backlog
+  1-5-admin-password-and-parent-reset: review
   epic-1-retrospective: optional
 
   # Epic 2: Stock the shop and browse the lists
