@@ -18,7 +18,14 @@ import {
   printRecoveryCode,
   verifySecret,
 } from './passwords.js'
-import { EmailTakenError, createParent, findParentByEmail, findParentById } from './parents.js'
+import {
+  EmailTakenError,
+  createParent,
+  findParentByEmail,
+  findParentById,
+  saveParentProfile,
+  type ParentRow,
+} from './parents.js'
 import { enableForeignKeys, normalizeEmail, type IdentityEnv } from './seed.js'
 import {
   validateEmail,
@@ -134,6 +141,22 @@ export function rejectUnauthorized(req: Request, res: Response, lookup: SessionL
   sendError(res, 401, 'unauthenticated', 'Sign in to continue.')
 }
 
+function parentProfile(row: ParentRow): {
+  name: string
+  deliveryAddress: string
+  whatsapp: string
+  secondPhone: string | null
+  email: string
+} {
+  return {
+    name: row.name,
+    deliveryAddress: row.delivery_address,
+    whatsapp: row.whatsapp,
+    secondPhone: row.second_phone,
+    email: row.email,
+  }
+}
+
 function createSession(
   db: Database.Database,
   env: IdentityEnv,
@@ -236,6 +259,117 @@ export function createIdentityRouter(db: Database.Database, env: IdentityEnv): R
 
       createSession(db, env, { role: 'parent', id: parent.id, email: parent.email }, req, res)
       res.status(201).json({ role: 'parent', email: parent.email })
+    }),
+  )
+
+  router.get(
+    '/parents/me',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const current = lookupSession(db, env, req)
+      if (current.status !== 'ok') {
+        rejectUnauthorized(req, res, current)
+        return
+      }
+      if (current.account.role !== 'parent') {
+        sendError(
+          res,
+          403,
+          'forbidden',
+          'This is a parent account page. Sign in as a parent to view or save these details.',
+        )
+        return
+      }
+      const parent = findParentById(db, current.account.id)
+      if (!parent) {
+        sendError(res, 500, 'internal_error', 'Something went wrong on our side. Try again.')
+        return
+      }
+      res.status(200).json(parentProfile(parent))
+    }),
+  )
+
+  router.patch(
+    '/parents/me',
+    safe(async (req, res) => {
+      const current = lookupSession(db, env, req)
+      if (current.status !== 'ok') {
+        rejectUnauthorized(req, res, current)
+        return
+      }
+      if (current.account.role !== 'parent') {
+        sendError(
+          res,
+          403,
+          'forbidden',
+          'This is a parent account page. Sign in as a parent to view or save these details.',
+        )
+        return
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+
+      const name = validateRequiredText(body.name, 'name', 'name')
+      if (!name.ok) {
+        sendError(res, 400, 'invalid_input', name.error.message, name.error.field)
+        return
+      }
+      const deliveryAddress = validateRequiredText(
+        body.deliveryAddress,
+        'deliveryAddress',
+        'delivery address',
+      )
+      if (!deliveryAddress.ok) {
+        sendError(
+          res,
+          400,
+          'invalid_input',
+          deliveryAddress.error.message,
+          deliveryAddress.error.field,
+        )
+        return
+      }
+      const whatsapp = validateMobile(body.whatsapp, 'whatsapp', 'WhatsApp number')
+      if (!whatsapp.ok) {
+        sendError(res, 400, 'invalid_input', whatsapp.error.message, whatsapp.error.field)
+        return
+      }
+      const secondPhone = validateOptionalMobile(
+        body.secondPhone,
+        'secondPhone',
+        'second phone number',
+      )
+      if (!secondPhone.ok) {
+        sendError(res, 400, 'invalid_input', secondPhone.error.message, secondPhone.error.field)
+        return
+      }
+
+      const passwordOmitted =
+        body.password === undefined ||
+        body.password === null ||
+        (typeof body.password === 'string' && !body.password.trim())
+      let nextPassword: string | undefined
+      if (!passwordOmitted) {
+        const password = validatePassword(body.password)
+        if (!password.ok) {
+          sendError(res, 400, 'invalid_input', password.error.message, password.error.field)
+          return
+        }
+        nextPassword = password.value
+      }
+
+      const parent = await saveParentProfile(
+        db,
+        current.account.id,
+        {
+          name: name.value,
+          deliveryAddress: deliveryAddress.value,
+          whatsapp: whatsapp.value,
+          secondPhone: secondPhone.value,
+        },
+        nextPassword,
+      )
+      res.status(200).json(parentProfile(parent))
     }),
   )
 
