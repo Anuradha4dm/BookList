@@ -8,6 +8,11 @@ import { after, before, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import { profileDraftFromGet, profilePatchBody } from '../../client/storefront/src/accountProfile.ts'
+import {
+  parentsFindQuery,
+  parentsPasswordBody,
+  settingsPasswordBody,
+} from '../../client/admin/src/adminPasswords.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -91,6 +96,8 @@ const PARENT_PORT = String(18769)
 const parentBaseUrl = `http://127.0.0.1:${PARENT_PORT}`
 const ACCOUNT_PORT = String(18771)
 const accountBaseUrl = `http://127.0.0.1:${ACCOUNT_PORT}`
+const ADMIN_PASSWORD_PORT = String(18772)
+const adminPasswordBaseUrl = `http://127.0.0.1:${ADMIN_PASSWORD_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -1616,6 +1623,505 @@ describe('I/O & edge-case matrix', () => {
       })
       assert.equal('delivery_address' in patch, false)
       assert.equal('second_phone' in patch, false)
+    })
+  })
+
+  describe('Admin password and parent reset', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+
+    const nimali = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      secondPhone: '0717654321',
+      email: 'nimali.reset@example.com',
+      password: 'evening-order',
+    }
+
+    function register(body: Record<string, unknown>): Promise<Response> {
+      return fetch(`${adminPasswordBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    }
+
+    function login(email: string, password: string): Promise<Response> {
+      return fetch(`${adminPasswordBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+    }
+
+    async function signIn(email: string, password: string): Promise<string> {
+      const response = await login(email, password)
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    function patchAdminPassword(cookie: string, password: string): Promise<Response> {
+      return fetch(`${adminPasswordBaseUrl}/api/admin/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(settingsPasswordBody(password)),
+      })
+    }
+
+    function findParent(cookie: string, email: string): Promise<Response> {
+      return fetch(`${adminPasswordBaseUrl}/api/admin/parents?${parentsFindQuery(email)}`, {
+        headers: { cookie },
+      })
+    }
+
+    function patchParentPassword(cookie: string, email: string, password: string): Promise<Response> {
+      return fetch(`${adminPasswordBaseUrl}/api/admin/parents`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(parentsPasswordBody(email, password)),
+      })
+    }
+
+    type AdminSnapshot = { id: number; email: string; password_hash: string }
+    type ParentSnapshot = {
+      id: number
+      email: string
+      password_hash: string
+      name: string
+      delivery_address: string
+      whatsapp: string
+      second_phone: string | null
+    }
+
+    function adminRow(): AdminSnapshot {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return db.prepare('SELECT id, email, password_hash FROM admins').get() as AdminSnapshot
+      } finally {
+        db.close()
+      }
+    }
+
+    function parentByEmail(email: string): ParentSnapshot {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        const row = db
+          .prepare(
+            'SELECT id, email, password_hash, name, delivery_address, whatsapp, second_phone FROM parents WHERE email = ?',
+          )
+          .get(email) as ParentSnapshot | undefined
+        assert.ok(row, `missing parent ${email}`)
+        return row
+      } finally {
+        db.close()
+      }
+    }
+
+    function sessionCount(): number {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return (db.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }).n
+      } finally {
+        db.close()
+      }
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-admin-password-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ADMIN_PASSWORD_PORT)
+      child = started.child
+      const created = await register(nimali)
+      assert.equal(created.status, 201)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('stores a new admin scrypt hash, keeps this session, and requires the new password to log in', async () => {
+      const cookie = await signIn('owner@example.com', 'test-password')
+      const before = adminRow()
+      const sessionsBefore = sessionCount()
+      const nextPassword = 'owner-evening'
+
+      const response = await patchAdminPassword(cookie, nextPassword)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as Record<string, unknown>
+      assert.equal(body.ok, true)
+      assert.equal('password' in body, false)
+      assert.equal('password_hash' in body, false)
+
+      const after = adminRow()
+      assert.notEqual(after.password_hash, before.password_hash)
+      assert.match(after.password_hash, /^scrypt\$/)
+      assert.equal(after.password_hash.includes(nextPassword), false)
+      assert.equal(after.password_hash.includes('test-password'), false)
+      assert.equal(sessionCount(), sessionsBefore)
+
+      const still = await fetch(`${adminPasswordBaseUrl}/api/session`, { headers: { cookie } })
+      assert.equal(still.status, 200)
+      const stillBody = (await still.json()) as { role: string; email: string }
+      assert.equal(stillBody.role, 'admin')
+      assert.equal(stillBody.email, 'owner@example.com')
+
+      const oldLogin = await login('owner@example.com', 'test-password')
+      assert.equal(oldLogin.status, 401)
+      const oldBody = (await oldLogin.json()) as { error: { code: string } }
+      assert.equal(oldBody.error.code, 'invalid_credentials')
+      assert.equal(sidCookie(oldLogin.headers), undefined)
+
+      const newLogin = await login('owner@example.com', nextPassword)
+      assert.equal(newLogin.status, 200)
+      assert.ok(sidCookie(newLogin.headers))
+    })
+
+    it('sets a parent password by email with no secret in the JSON, and that parent can log in immediately', async () => {
+      const parentCookieBefore = await signIn(nimali.email, nimali.password)
+      const adminCookie = await signIn('owner@example.com', 'owner-evening')
+      const before = parentByEmail(nimali.email)
+      const sessionsBefore = sessionCount()
+      const nextPassword = 'fresh-morning'
+
+      const found = await findParent(adminCookie, 'Nimali.Reset@Example.com')
+      assert.equal(found.status, 200)
+      assert.equal(found.headers.get('cache-control'), 'no-store')
+      const foundBody = (await found.json()) as Record<string, unknown>
+      assert.deepEqual(foundBody, { email: nimali.email })
+      assert.equal('password_hash' in foundBody, false)
+      assert.equal('password' in foundBody, false)
+      assert.equal('id' in foundBody, false)
+
+      const response = await patchParentPassword(
+        adminCookie,
+        'Nimali.Reset@Example.com',
+        nextPassword,
+      )
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as Record<string, unknown>
+      assert.deepEqual(body, { email: nimali.email })
+      assert.equal('password' in body, false)
+      assert.equal('password_hash' in body, false)
+
+      const after = parentByEmail(nimali.email)
+      assert.notEqual(after.password_hash, before.password_hash)
+      assert.match(after.password_hash, /^scrypt\$/)
+      assert.equal(after.password_hash.includes(nextPassword), false)
+      assert.equal(after.password_hash.includes(nimali.password), false)
+      assert.equal(after.name, before.name)
+      assert.equal(after.delivery_address, before.delivery_address)
+      assert.equal(after.whatsapp, before.whatsapp)
+      assert.equal(after.second_phone, before.second_phone)
+      assert.equal(sessionCount(), sessionsBefore)
+
+      const stillParent = await fetch(`${adminPasswordBaseUrl}/api/parents/me`, {
+        headers: { cookie: parentCookieBefore },
+      })
+      assert.equal(stillParent.status, 200)
+      const stillParentBody = (await stillParent.json()) as { email: string }
+      assert.equal(stillParentBody.email, nimali.email)
+
+      const oldLogin = await login(nimali.email, nimali.password)
+      assert.equal(oldLogin.status, 401)
+
+      const newLogin = await login(nimali.email, nextPassword)
+      assert.equal(newLogin.status, 200)
+      const parentCookie = sidCookie(newLogin.headers)
+      assert.ok(parentCookie)
+
+      const me = await fetch(`${adminPasswordBaseUrl}/api/parents/me`, {
+        headers: { cookie: cookieHeader(parentCookie) },
+      })
+      assert.equal(me.status, 200)
+      const meBody = (await me.json()) as { email: string }
+      assert.equal(meBody.email, nimali.email)
+
+      const adminMe = await fetch(`${adminPasswordBaseUrl}/api/parents/me`, {
+        headers: { cookie: adminCookie },
+      })
+      assert.equal(adminMe.status, 403)
+    })
+
+    it('refuses an email no parent holds and writes no hash', async () => {
+      const cookie = await signIn('owner@example.com', 'owner-evening')
+      const beforeAdmin = adminRow()
+      const beforeParent = parentByEmail(nimali.email)
+
+      const missingGet = await findParent(cookie, 'nobody@example.com')
+      assert.equal(missingGet.status, 404)
+      const missingGetBody = (await missingGet.json()) as {
+        error: { code: string; message: string; field?: string }
+      }
+      assert.equal(missingGetBody.error.code, 'unknown_email')
+      assert.match(missingGetBody.error.message, /[A-Za-z]/)
+      assert.equal(missingGetBody.error.field, 'email')
+
+      const missingPatch = await patchParentPassword(
+        cookie,
+        'nobody@example.com',
+        'should-not-apply',
+      )
+      assert.equal(missingPatch.status, 404)
+      const missingPatchBody = (await missingPatch.json()) as {
+        error: { code: string; message: string; field?: string }
+      }
+      assert.equal(missingPatchBody.error.code, 'unknown_email')
+      assert.match(missingPatchBody.error.message, /[A-Za-z]/)
+      assert.equal(missingPatchBody.error.field, 'email')
+
+      assert.deepEqual(adminRow(), beforeAdmin)
+      assert.deepEqual(parentByEmail(nimali.email), beforeParent)
+    })
+
+    it('refuses an empty, whitespace, short, or long password on either write', async () => {
+      const cookie = await signIn('owner@example.com', 'owner-evening')
+      const beforeAdmin = adminRow()
+      const beforeParent = parentByEmail(nimali.email)
+      const cases: Array<[string, RegExp]> = [
+        ['', /password/i],
+        ['      ', /password/i],
+        ['short', /password/i],
+        ['a'.repeat(129), /password/i],
+      ]
+
+      for (const [password, names] of cases) {
+        const adminWrite = await patchAdminPassword(cookie, password)
+        assert.equal(adminWrite.status, 400, `admin expected 400 for ${JSON.stringify(password)}`)
+        const adminBody = (await adminWrite.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(adminBody.error.code, 'invalid_input')
+        assert.equal(adminBody.error.field, 'password')
+        assert.match(adminBody.error.message, names)
+
+        const parentWrite = await patchParentPassword(cookie, nimali.email, password)
+        assert.equal(parentWrite.status, 400, `parent expected 400 for ${JSON.stringify(password)}`)
+        const parentBody = (await parentWrite.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(parentBody.error.code, 'invalid_input')
+        assert.equal(parentBody.error.field, 'password')
+        assert.match(parentBody.error.message, names)
+      }
+
+      assert.deepEqual(adminRow(), beforeAdmin)
+      assert.deepEqual(parentByEmail(nimali.email), beforeParent)
+    })
+
+    it('refuses a parent session on the admin writes and does not change hashes', async () => {
+      const beforeAdmin = adminRow()
+      const beforeParent = parentByEmail(nimali.email)
+      const parentCookie = await signIn(nimali.email, 'fresh-morning')
+
+      const adminWrite = await patchAdminPassword(parentCookie, 'parent-should-not')
+      assert.equal(adminWrite.status, 403)
+      const adminBody = (await adminWrite.json()) as { error: { code: string; message: string } }
+      assert.equal(adminBody.error.code, 'forbidden')
+      assert.match(adminBody.error.message, /[A-Za-z]/)
+
+      const parentWrite = await patchParentPassword(
+        parentCookie,
+        nimali.email,
+        'parent-should-not',
+      )
+      assert.equal(parentWrite.status, 403)
+      const parentBody = (await parentWrite.json()) as { error: { code: string; message: string } }
+      assert.equal(parentBody.error.code, 'forbidden')
+      assert.match(parentBody.error.message, /[A-Za-z]/)
+
+      const lookup = await findParent(parentCookie, nimali.email)
+      assert.equal(lookup.status, 403)
+
+      assert.deepEqual(adminRow(), beforeAdmin)
+      assert.deepEqual(parentByEmail(nimali.email), beforeParent)
+    })
+
+    it('rejects anonymous and stale cookies without writing a hash', async () => {
+      const beforeAdmin = adminRow()
+      const beforeParent = parentByEmail(nimali.email)
+
+      const missingAdmin = await fetch(`${adminPasswordBaseUrl}/api/admin/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'should-not-apply' }),
+      })
+      assert.equal(missingAdmin.status, 401)
+      const missingAdminBody = (await missingAdmin.json()) as { error: { code: string } }
+      assert.equal(missingAdminBody.error.code, 'unauthenticated')
+      assert.equal(sidCookie(missingAdmin.headers), undefined)
+
+      const missingParent = await patchParentPassword('', nimali.email, 'should-not-apply')
+      assert.equal(missingParent.status, 401)
+      const missingParentBody = (await missingParent.json()) as { error: { code: string } }
+      assert.equal(missingParentBody.error.code, 'unauthenticated')
+
+      const missingFind = await findParent('', nimali.email)
+      assert.equal(missingFind.status, 401)
+      const missingFindBody = (await missingFind.json()) as { error: { code: string } }
+      assert.equal(missingFindBody.error.code, 'unauthenticated')
+      assert.equal(sidCookie(missingFind.headers), undefined)
+
+      const cookie = await signIn('owner@example.com', 'owner-evening')
+      const sessionId = cookie.slice('booklist.sid='.length).split('.')[0]
+      assert.ok(sessionId)
+      const writer = new Database(dbPath)
+      try {
+        writer
+          .prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+          .run(new Date(Date.now() - 60_000).toISOString(), sessionId)
+      } finally {
+        writer.close()
+      }
+
+      const staleAdmin = await patchAdminPassword(cookie, 'stale-should-not')
+      assert.equal(staleAdmin.status, 401)
+      const staleAdminBody = (await staleAdmin.json()) as { error: { code: string } }
+      assert.equal(staleAdminBody.error.code, 'unauthenticated')
+      const clearedAdmin = sidCookie(staleAdmin.headers)
+      assert.ok(clearedAdmin, 'a stale session must clear the cookie')
+      assert.match(clearedAdmin, /Max-Age=0/)
+
+      const fresh = await signIn('owner@example.com', 'owner-evening')
+      const freshId = fresh.slice('booklist.sid='.length).split('.')[0]
+      assert.ok(freshId)
+      const writer2 = new Database(dbPath)
+      try {
+        writer2
+          .prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+          .run(new Date(Date.now() - 60_000).toISOString(), freshId)
+      } finally {
+        writer2.close()
+      }
+
+      const staleParent = await patchParentPassword(fresh, nimali.email, 'stale-should-not')
+      assert.equal(staleParent.status, 401)
+      const staleParentBody = (await staleParent.json()) as { error: { code: string } }
+      assert.equal(staleParentBody.error.code, 'unauthenticated')
+      const clearedParent = sidCookie(staleParent.headers)
+      assert.ok(clearedParent, 'a stale session must clear the cookie')
+      assert.match(clearedParent, /Max-Age=0/)
+
+      const findCookie = await signIn('owner@example.com', 'owner-evening')
+      const findId = findCookie.slice('booklist.sid='.length).split('.')[0]
+      assert.ok(findId)
+      const writer3 = new Database(dbPath)
+      try {
+        writer3
+          .prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+          .run(new Date(Date.now() - 60_000).toISOString(), findId)
+      } finally {
+        writer3.close()
+      }
+
+      const staleFind = await findParent(findCookie, nimali.email)
+      assert.equal(staleFind.status, 401)
+      const staleFindBody = (await staleFind.json()) as { error: { code: string } }
+      assert.equal(staleFindBody.error.code, 'unauthenticated')
+      const clearedFind = sidCookie(staleFind.headers)
+      assert.ok(clearedFind, 'a stale session must clear the cookie')
+      assert.match(clearedFind, /Max-Age=0/)
+
+      assert.deepEqual(adminRow(), beforeAdmin)
+      assert.deepEqual(parentByEmail(nimali.email), beforeParent)
+    })
+
+    it('maps Settings and Parents request keys', () => {
+      const settings = settingsPasswordBody('owner-evening')
+      assert.deepEqual(settings, { password: 'owner-evening' })
+      assert.deepEqual(Object.keys(settings), ['password'])
+
+      const query = parentsFindQuery('nimali.reset@example.com')
+      assert.equal(query, 'email=nimali.reset%40example.com')
+      assert.match(query, /^email=/)
+
+      const patch = parentsPasswordBody('nimali.reset@example.com', 'fresh-morning')
+      assert.deepEqual(patch, { email: 'nimali.reset@example.com', password: 'fresh-morning' })
+      assert.deepEqual(Object.keys(patch), ['email', 'password'])
+    })
+
+    it('keeps Settings as one password field and Parents as find-by-email, with no extra recovery UI', async () => {
+      const settingsPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'SettingsPage.tsx'),
+        'utf8',
+      )
+      const parentsPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'ParentsPage.tsx'),
+        'utf8',
+      )
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const shell = await readFile(path.join(repoRoot, 'client', 'admin', 'src', 'Shell.tsx'), 'utf8')
+      const http = await readFile(path.join(serverRoot, 'identity', 'http.ts'), 'utf8')
+      const parentsSource = await readFile(path.join(serverRoot, 'identity', 'parents.ts'), 'utf8')
+
+      assert.match(adminApp, /import \{ SettingsPage \} from '\.\/SettingsPage'/)
+      assert.match(adminApp, /import \{ ParentsPage \} from '\.\/ParentsPage'/)
+      assert.match(adminApp, /path="settings" element=\{<SettingsPage \/>\}/)
+      assert.match(adminApp, /path="parents" element=\{<ParentsPage \/>\}/)
+      assert.match(adminApp, /path="schools" element=\{<Page title="Schools" \/>\}/)
+      assert.match(adminApp, /path="export" element=\{<Page title="Export" \/>\}/)
+
+      assert.match(shell, /label: 'Parents'/)
+      assert.match(shell, /label: 'Settings'/)
+      assert.match(shell, /label: 'Book master'/)
+      assert.match(shell, /className="admin-sidebar-export"/)
+      assert.match(shell, /to="\/export"/)
+
+      assert.match(settingsPage, /label[\s\S]*New password/)
+      assert.match(settingsPage, /id="admin-settings-password"/)
+      assert.match(settingsPage, /button-primary/)
+      assert.match(settingsPage, />\s*Save\s*</)
+      assert.equal((settingsPage.match(/button-primary/g) ?? []).length, 1)
+      assert.match(settingsPage, /method: 'PATCH'/)
+      assert.match(settingsPage, /'\/api\/admin\/me'/)
+      assert.match(settingsPage, /settingsPasswordBody/)
+      assert.match(settingsPage, /body\?\.error\?\.field === 'password'/)
+      assert.doesNotMatch(settingsPage, /field === 'password' \|\|/)
+
+      assert.match(parentsPage, /id="admin-parents-email"/)
+      assert.match(parentsPage, /id="admin-parents-found-email"/)
+      assert.match(parentsPage, /id="admin-parents-password"/)
+      assert.match(parentsPage, /New password/)
+      assert.match(parentsPage, /parent's email/)
+      assert.match(parentsPage, /parentsFindQuery/)
+      assert.match(parentsPage, /parentsPasswordBody/)
+      assert.match(parentsPage, /readOnly/)
+      assert.match(parentsPage, /id="admin-parents-password"[\s\S]*autoComplete="off"/)
+      assert.match(parentsPage, /'\/api\/admin\/parents'/)
+      assert.match(parentsPage, /method: 'PATCH'/)
+      assert.match(parentsPage, />\s*Find\s*</)
+      assert.match(parentsPage, />\s*Save\s*</)
+
+      const banned = /\brecovery\b|\bforgot\b|reset password|single-use/i
+      assert.doesNotMatch(settingsPage, banned)
+      assert.doesNotMatch(parentsPage, banned)
+      assert.doesNotMatch(shell, banned)
+      assert.doesNotMatch(adminApp, banned)
+
+      const meRoute = http.match(/router\.patch\(\s*'\/admin\/me'[\s\S]*?router\.get\(/)?.[0]
+      const parentPatch = http.match(/router\.patch\(\s*'\/admin\/parents'[\s\S]*?return router/)?.[0]
+      assert.ok(meRoute, 'PATCH /admin/me must exist')
+      assert.ok(parentPatch, 'PATCH /admin/parents must exist')
+      assert.match(meRoute, /lookupSession/)
+      assert.match(parentPatch, /lookupSession/)
+      assert.match(meRoute, /refuseIfNotAdmin/)
+      assert.match(parentPatch, /refuseIfNotAdmin/)
+      assert.match(http, /role !== 'admin'/)
+      assert.match(parentPatch, /setParentPassword/)
+      assert.doesNotMatch(meRoute, /DELETE FROM sessions/)
+      assert.doesNotMatch(parentPatch, /DELETE FROM sessions/)
+      assert.doesNotMatch(parentPatch, /UPDATE parents SET/)
+      assert.match(http, /db\.prepare\('DELETE FROM sessions WHERE admin_id = \?'\)/)
+
+      const setStart = parentsSource.indexOf('export async function setParentPassword')
+      assert.ok(setStart >= 0)
+      const hashAt = parentsSource.indexOf('await hashSecret(password)', setStart)
+      const updateAt = parentsSource.indexOf('UPDATE parents SET password_hash', setStart)
+      assert.ok(hashAt >= 0 && updateAt >= 0 && hashAt < updateAt, 'hash the password before any SQL write')
     })
   })
 

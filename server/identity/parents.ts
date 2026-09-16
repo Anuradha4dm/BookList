@@ -123,6 +123,20 @@ export function updateParent(
   return updated
 }
 
+/** Hash first, then UPDATE `password_hash` only. Contact fields stay as they are. */
+export async function setParentPassword(
+  db: Database.Database,
+  id: number,
+  password: string,
+): Promise<ParentRow> {
+  const passwordHash = await hashSecret(password)
+  const result = db.prepare('UPDATE parents SET password_hash = ? WHERE id = ?').run(passwordHash, id)
+  if (result.changes !== 1) throw new Error('parent row vanished before password update')
+  const updated = findParentById(db, id)
+  if (!updated) throw new Error('parent row vanished after password update')
+  return updated
+}
+
 /** Hash first (if a password is given), then write contact and hash in one transaction. */
 export async function saveParentProfile(
   db: Database.Database,

@@ -24,6 +24,7 @@ import {
   findParentByEmail,
   findParentById,
   saveParentProfile,
+  setParentPassword,
   type ParentRow,
 } from './parents.js'
 import { enableForeignKeys, normalizeEmail, type IdentityEnv } from './seed.js'
@@ -139,6 +140,35 @@ export function rejectUnauthorized(req: Request, res: Response, lookup: SessionL
     clearSessionCookie(res, isHttps(req))
   }
   sendError(res, 401, 'unauthenticated', 'Sign in to continue.')
+}
+
+function refuseIfNotAdmin(
+  req: Request,
+  res: Response,
+  lookup: SessionLookup,
+): SessionAccount | undefined {
+  if (lookup.status !== 'ok') {
+    rejectUnauthorized(req, res, lookup)
+    return undefined
+  }
+  if (lookup.account.role !== 'admin') {
+    sendError(
+      res,
+      403,
+      'forbidden',
+      'This is an admin page. Sign in as the shop owner to use this page.',
+    )
+    return undefined
+  }
+  return lookup.account
+}
+
+/** These writes require a password; whitespace is not an omit-signal like Story 1.4. */
+function validateRequiredPassword(value: unknown): ReturnType<typeof validatePassword> {
+  if (typeof value === 'string' && value.length > 0 && !value.trim()) {
+    return { ok: false, error: { field: 'password', message: 'Enter a password.' } }
+  }
+  return validatePassword(value)
 }
 
 function parentProfile(row: ParentRow): {
@@ -507,6 +537,91 @@ export function createIdentityRouter(db: Database.Database, env: IdentityEnv): R
 
       printRecoveryCode(nextCode)
       res.status(200).json({ ok: true })
+    }),
+  )
+
+  router.patch(
+    '/admin/me',
+    safe(async (req, res) => {
+      const account = refuseIfNotAdmin(req, res, lookupSession(db, env, req))
+      if (!account) return
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const password = validateRequiredPassword(body.password)
+      if (!password.ok) {
+        sendError(res, 400, 'invalid_input', password.error.message, password.error.field)
+        return
+      }
+
+      const passwordHash = await hashSecret(password.value)
+      const result = db
+        .prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
+        .run(passwordHash, account.id)
+      if (result.changes !== 1) {
+        sendError(res, 500, 'internal_error', 'Something went wrong on our side. Try again.')
+        return
+      }
+      res.status(200).json({ ok: true })
+    }),
+  )
+
+  router.get(
+    '/admin/parents',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      if (!refuseIfNotAdmin(req, res, lookupSession(db, env, req))) return
+
+      const email = validateEmail((req.query as Record<string, unknown>).email)
+      if (!email.ok) {
+        sendError(res, 400, 'invalid_input', email.error.message, email.error.field)
+        return
+      }
+      const parent = findParentByEmail(db, email.value)
+      if (!parent) {
+        sendError(
+          res,
+          404,
+          'unknown_email',
+          'No parent account uses that email. Check it and try again.',
+          'email',
+        )
+        return
+      }
+      res.status(200).json({ email: parent.email })
+    }),
+  )
+
+  router.patch(
+    '/admin/parents',
+    safe(async (req, res) => {
+      if (!refuseIfNotAdmin(req, res, lookupSession(db, env, req))) return
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const email = validateEmail(body.email)
+      if (!email.ok) {
+        sendError(res, 400, 'invalid_input', email.error.message, email.error.field)
+        return
+      }
+      const password = validateRequiredPassword(body.password)
+      if (!password.ok) {
+        sendError(res, 400, 'invalid_input', password.error.message, password.error.field)
+        return
+      }
+
+      const parent = findParentByEmail(db, email.value)
+      if (!parent) {
+        sendError(
+          res,
+          404,
+          'unknown_email',
+          'No parent account uses that email. Check it and try again.',
+          'email',
+        )
+        return
+      }
+
+      const updated = await setParentPassword(db, parent.id, password.value)
+      res.status(200).json({ email: updated.email })
     }),
   )
 

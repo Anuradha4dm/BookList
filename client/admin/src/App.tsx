@@ -1,5 +1,7 @@
 import { createBrowserRouter, createRoutesFromElements, Route } from 'react-router'
 import { AdminGate } from './AdminGate'
+import { ParentsPage } from './ParentsPage'
+import { SettingsPage } from './SettingsPage'
 import { Shell } from './Shell'
 
 function Page({ title }: { title: string }) {
@@ -25,6 +27,8 @@ export const router = createBrowserRouter(
         <Route path="books" element={<Page title="Book master" />} />
         <Route path="packs" element={<Page title="Packs" />} />
         <Route path="items" element={<Page title="Items" />} />
+        <Route path="parents" element={<ParentsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="export" element={<Page title="Export" />} />
       </Route>
       <Route path="*" element={<BlankPage />} />
