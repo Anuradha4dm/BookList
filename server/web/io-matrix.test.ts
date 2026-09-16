@@ -13,6 +13,7 @@ import {
   parentsPasswordBody,
   settingsPasswordBody,
 } from '../../client/admin/src/adminPasswords.ts'
+import { catalogArchivePath, catalogCollectionPath, catalogItemPath, catalogNameBody } from '../../client/admin/src/catalogNamed.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -98,6 +99,8 @@ const ACCOUNT_PORT = String(18771)
 const accountBaseUrl = `http://127.0.0.1:${ACCOUNT_PORT}`
 const ADMIN_PASSWORD_PORT = String(18772)
 const adminPasswordBaseUrl = `http://127.0.0.1:${ADMIN_PASSWORD_PORT}`
+const CATALOG_PORT = String(18773)
+const catalogBaseUrl = `http://127.0.0.1:${CATALOG_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -252,7 +255,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 2)
+        assert.equal(applied.n, 3)
       } finally {
         db.close()
       }
@@ -2062,7 +2065,8 @@ describe('I/O & edge-case matrix', () => {
       assert.match(adminApp, /import \{ ParentsPage \} from '\.\/ParentsPage'/)
       assert.match(adminApp, /path="settings" element=\{<SettingsPage \/>\}/)
       assert.match(adminApp, /path="parents" element=\{<ParentsPage \/>\}/)
-      assert.match(adminApp, /path="schools" element=\{<Page title="Schools" \/>\}/)
+      assert.match(adminApp, /path="schools" element=\{<SchoolsPage \/>\}/)
+      assert.match(adminApp, /path="grades" element=\{<GradesPage \/>\}/)
       assert.match(adminApp, /path="export" element=\{<Page title="Export" \/>\}/)
 
       assert.match(shell, /label: 'Parents'/)
@@ -2185,11 +2189,19 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 2)
+          assert.equal(applied.n, 3)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
           assert.ok(parents)
+          const schools = upgraded
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schools'")
+            .get()
+          assert.ok(schools)
+          const grades = upgraded
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'grades'")
+            .get()
+          assert.ok(grades)
 
           const kept = upgraded
             .prepare('SELECT admin_id, parent_id FROM sessions WHERE id = ?')
@@ -2289,6 +2301,7 @@ describe('I/O & edge-case matrix', () => {
       const files = [
         ...(await walkFiles(path.join(serverRoot, 'web'))),
         ...(await walkFiles(path.join(serverRoot, 'identity'))),
+        ...(await walkFiles(path.join(serverRoot, 'catalog'))),
       ]
       for (const file of files) {
         if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
@@ -2297,6 +2310,468 @@ describe('I/O & edge-case matrix', () => {
         assert.doesNotMatch(source, /Set-Cookie/)
         assert.doesNotMatch(source, /res\.cookie\s*\(/)
       }
+    })
+  })
+
+  describe('Schools and grades', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.catalog@example.com',
+      password: 'evening-order',
+    }
+
+    const resources = [
+      {
+        path: 'schools' as const,
+        singular: 'school',
+        table: 'schools',
+        packColumn: 'school_id' as const,
+        sample: 'Mahinda College',
+        renamed: 'Mahinda College — Galle',
+      },
+      {
+        path: 'grades' as const,
+        singular: 'grade',
+        table: 'grades',
+        packColumn: 'grade_id' as const,
+        sample: 'Year 6 English',
+        renamed: 'Grade 6 — English',
+      },
+    ]
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${catalogBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    function collectionUrl(resourcePath: string): string {
+      return `${catalogBaseUrl}/api/admin/${resourcePath}`
+    }
+
+    function itemUrl(resourcePath: string, id: number | string): string {
+      return `${collectionUrl(resourcePath)}/${id}`
+    }
+
+    function namedCount(table: string): number {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+      } finally {
+        db.close()
+      }
+    }
+
+    function namedRow(table: string, id: number): { id: number; name: string; archived_at: string | null } | undefined {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return db
+          .prepare(`SELECT id, name, archived_at FROM ${table} WHERE id = ?`)
+          .get(id) as { id: number; name: string; archived_at: string | null } | undefined
+      } finally {
+        db.close()
+      }
+    }
+
+    type NamedJson = { id: number; name: string; archivedAt: string | null }
+
+    async function createNamed(
+      cookie: string,
+      resourcePath: string,
+      name: string,
+    ): Promise<NamedJson> {
+      const response = await fetch(collectionUrl(resourcePath), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody(name)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as NamedJson
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-catalog-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, CATALOG_PORT)
+      child = started.child
+      const registered = await fetch(`${catalogBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    for (const resource of resources) {
+      describe(resource.path, { concurrency: 1 }, () => {
+        it('lists an empty array for an admin with no rows', async () => {
+          const cookie = await signInAdmin()
+          const response = await fetch(collectionUrl(resource.path), { headers: { cookie } })
+          assert.equal(response.status, 200)
+          assert.equal(response.headers.get('cache-control'), 'no-store')
+          const body = (await response.json()) as unknown
+          assert.deepEqual(body, [])
+          assert.equal(namedCount(resource.table), 0)
+        })
+
+        it('creates a named row in catalog', async () => {
+          const cookie = await signInAdmin()
+          const response = await fetch(collectionUrl(resource.path), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify(catalogNameBody(`  ${resource.sample}  `)),
+          })
+          assert.equal(response.status, 201)
+          const body = (await response.json()) as NamedJson
+          assert.equal(typeof body.id, 'number')
+          assert.equal(body.name, resource.sample)
+          assert.equal(body.archivedAt, null)
+          const row = namedRow(resource.table, body.id)
+          assert.ok(row)
+          assert.equal(row.name, resource.sample)
+          assert.equal(row.archived_at, null)
+
+          const listed = await fetch(collectionUrl(resource.path), { headers: { cookie } })
+          assert.equal(listed.status, 200)
+          const list = (await listed.json()) as NamedJson[]
+          const found = list.find((item) => item.id === body.id)
+          assert.ok(found)
+          assert.equal(found.id, body.id)
+          assert.equal(found.name, resource.sample)
+          assert.equal(found.archivedAt, null)
+        })
+
+        it('renames an existing row and keeps the id', async () => {
+          const cookie = await signInAdmin()
+          const created = await createNamed(cookie, resource.path, `${resource.sample} rename`)
+          const response = await fetch(itemUrl(resource.path, created.id), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify(catalogNameBody(resource.renamed)),
+          })
+          assert.equal(response.status, 200)
+          const body = (await response.json()) as NamedJson
+          assert.equal(body.id, created.id)
+          assert.equal(body.name, resource.renamed)
+          assert.equal(body.archivedAt, null)
+          const row = namedRow(resource.table, created.id)
+          assert.ok(row)
+          assert.equal(row.name, resource.renamed)
+        })
+
+        it('archives a row, keeps it, and omits it from live rows', async () => {
+          const cookie = await signInAdmin()
+          const created = await createNamed(cookie, resource.path, `${resource.sample} archive`)
+          const response = await fetch(`${itemUrl(resource.path, created.id)}/archive`, {
+            method: 'POST',
+            headers: { cookie },
+          })
+          assert.equal(response.status, 200)
+          const body = (await response.json()) as NamedJson
+          assert.equal(body.id, created.id)
+          assert.equal(body.name, created.name)
+          assert.equal(typeof body.archivedAt, 'string')
+          assert.ok(body.archivedAt)
+
+          const row = namedRow(resource.table, created.id)
+          assert.ok(row)
+          assert.equal(row.name, created.name)
+          assert.equal(typeof row.archived_at, 'string')
+          assert.ok(row.archived_at)
+
+          const listed = await fetch(collectionUrl(resource.path), { headers: { cookie } })
+          assert.equal(listed.status, 200)
+          const list = (await listed.json()) as NamedJson[]
+          const archived = list.find((item) => item.id === created.id)
+          assert.ok(archived)
+          assert.ok(archived.archivedAt)
+          const live = list.filter((item) => item.archivedAt === null)
+          assert.equal(
+            live.find((item) => item.id === created.id),
+            undefined,
+          )
+        })
+
+        it('refuses an empty, whitespace, or non-string name without writing', async () => {
+          const cookie = await signInAdmin()
+          const created = await createNamed(cookie, resource.path, `${resource.sample} keep`)
+          const before = namedCount(resource.table)
+          const beforeRow = namedRow(resource.table, created.id)
+          const cases: unknown[] = ['', '   ', 12, null, { text: 'nope' }]
+
+          for (const name of cases) {
+            const createBad = await fetch(collectionUrl(resource.path), {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', cookie },
+              body: JSON.stringify({ name }),
+            })
+            assert.equal(createBad.status, 400, `create expected 400 for ${JSON.stringify(name)}`)
+            const createBody = (await createBad.json()) as {
+              error: { code: string; message: string; field?: string }
+            }
+            assert.equal(createBody.error.code, 'invalid_input')
+            assert.equal(createBody.error.field, 'name')
+            assert.match(createBody.error.message, /name/i)
+
+            const renameBad = await fetch(itemUrl(resource.path, created.id), {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json', cookie },
+              body: JSON.stringify({ name }),
+            })
+            assert.equal(renameBad.status, 400, `rename expected 400 for ${JSON.stringify(name)}`)
+            const renameBody = (await renameBad.json()) as {
+              error: { code: string; message: string; field?: string }
+            }
+            assert.equal(renameBody.error.code, 'invalid_input')
+            assert.equal(renameBody.error.field, 'name')
+          }
+
+          assert.equal(namedCount(resource.table), before)
+          assert.deepEqual(namedRow(resource.table, created.id), beforeRow)
+        })
+
+        it('refuses an unknown id without writing', async () => {
+          const cookie = await signInAdmin()
+          const before = namedCount(resource.table)
+          const missing = 99999
+
+          const rename = await fetch(itemUrl(resource.path, missing), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify(catalogNameBody(resource.renamed)),
+          })
+          assert.equal(rename.status, 404)
+          const renameBody = (await rename.json()) as { error: { code: string; message: string } }
+          assert.equal(typeof renameBody.error.code, 'string')
+          assert.ok(renameBody.error.code.length > 0)
+          assert.match(renameBody.error.message, /[A-Za-z]/)
+
+          const archive = await fetch(`${itemUrl(resource.path, missing)}/archive`, {
+            method: 'POST',
+            headers: { cookie },
+          })
+          assert.equal(archive.status, 404)
+          const archiveBody = (await archive.json()) as { error: { code: string; message: string } }
+          assert.equal(typeof archiveBody.error.code, 'string')
+          assert.match(archiveBody.error.message, /[A-Za-z]/)
+
+          const hardDelete = await fetch(itemUrl(resource.path, missing), {
+            method: 'DELETE',
+            headers: { cookie },
+          })
+          assert.equal(hardDelete.status, 404)
+          const deleteBody = (await hardDelete.json()) as { error: { code: string; message: string } }
+          assert.equal(typeof deleteBody.error.code, 'string')
+          assert.match(deleteBody.error.message, /[A-Za-z]/)
+
+          assert.equal(namedCount(resource.table), before)
+        })
+
+        it('refuses DELETE while a live pack would reference the row', async () => {
+          const cookie = await signInAdmin()
+          const created = await createNamed(cookie, resource.path, `${resource.sample} in use`)
+          const writer = new Database(dbPath)
+          try {
+            writer.exec(`
+              CREATE TABLE IF NOT EXISTS packs (
+                id INTEGER PRIMARY KEY NOT NULL,
+                school_id INTEGER,
+                grade_id INTEGER,
+                archived_at TEXT
+              )
+            `)
+            writer
+              .prepare(
+                `INSERT INTO packs (school_id, grade_id, archived_at) VALUES (?, ?, NULL)`,
+              )
+              .run(
+                resource.packColumn === 'school_id' ? created.id : null,
+                resource.packColumn === 'grade_id' ? created.id : null,
+              )
+          } finally {
+            writer.close()
+          }
+
+          const response = await fetch(itemUrl(resource.path, created.id), {
+            method: 'DELETE',
+            headers: { cookie },
+          })
+          assert.equal(response.status, 409)
+          const body = (await response.json()) as { error: { code: string; message: string } }
+          assert.equal(body.error.code, 'in_use')
+          assert.equal(typeof body.error.message, 'string')
+          assert.match(body.error.message, /[A-Za-z]/)
+          assert.ok(namedRow(resource.table, created.id))
+        })
+
+        it('refuses parent and anonymous writes', async () => {
+          const adminCookie = await signInAdmin()
+          const created = await createNamed(adminCookie, resource.path, `${resource.sample} gated`)
+          const before = namedCount(resource.table)
+          const beforeRow = namedRow(resource.table, created.id)
+
+          const parentWrites: Array<() => Promise<Response>> = [
+            () =>
+              fetch(collectionUrl(resource.path), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', cookie: parentCookie },
+                body: JSON.stringify(catalogNameBody('Parent should not')),
+              }),
+            () =>
+              fetch(itemUrl(resource.path, created.id), {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json', cookie: parentCookie },
+                body: JSON.stringify(catalogNameBody('Parent should not')),
+              }),
+            () =>
+              fetch(`${itemUrl(resource.path, created.id)}/archive`, {
+                method: 'POST',
+                headers: { cookie: parentCookie },
+              }),
+            () =>
+              fetch(itemUrl(resource.path, created.id), {
+                method: 'DELETE',
+                headers: { cookie: parentCookie },
+              }),
+          ]
+          const anonymousWrites: Array<() => Promise<Response>> = [
+            () =>
+              fetch(collectionUrl(resource.path), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(catalogNameBody('Anonymous should not')),
+              }),
+            () =>
+              fetch(itemUrl(resource.path, created.id), {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(catalogNameBody('Anonymous should not')),
+              }),
+            () =>
+              fetch(`${itemUrl(resource.path, created.id)}/archive`, { method: 'POST' }),
+            () => fetch(itemUrl(resource.path, created.id), { method: 'DELETE' }),
+          ]
+
+          for (const write of parentWrites) {
+            const response = await write()
+            assert.equal(response.status, 403)
+            const body = (await response.json()) as { error: { code: string; message: string } }
+            assert.equal(typeof body.error.code, 'string')
+            assert.ok(body.error.code.length > 0)
+            assert.match(body.error.message, /[A-Za-z]/)
+          }
+          for (const write of anonymousWrites) {
+            const response = await write()
+            assert.equal(response.status, 401)
+            const body = (await response.json()) as { error: { code: string; message: string } }
+            assert.equal(typeof body.error.code, 'string')
+            assert.ok(body.error.code.length > 0)
+            assert.match(body.error.message, /[A-Za-z]/)
+          }
+
+          assert.equal(namedCount(resource.table), before)
+          assert.deepEqual(namedRow(resource.table, created.id), beforeRow)
+        })
+      })
+    }
+
+    it('maps create/rename request keys', async () => {
+      const body = catalogNameBody('Mahinda College')
+      assert.deepEqual(body, { name: 'Mahinda College' })
+      assert.deepEqual(Object.keys(body), ['name'])
+      assert.equal(catalogCollectionPath('schools'), '/api/admin/schools')
+      assert.equal(catalogCollectionPath('grades'), '/api/admin/grades')
+      assert.equal(catalogItemPath('schools', 4), '/api/admin/schools/4')
+      assert.equal(catalogItemPath('grades', 4), '/api/admin/grades/4')
+      assert.equal(catalogArchivePath('schools', 4), '/api/admin/schools/4/archive')
+      assert.equal(catalogArchivePath('grades', 4), '/api/admin/grades/4/archive')
+
+      const catalogPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'CatalogNamedPage.tsx'),
+        'utf8',
+      )
+      assert.match(catalogPage, /catalogCollectionPath\(kind\)/)
+      assert.match(catalogPage, /catalogItemPath\(kind, draft\.id\)/)
+      assert.match(catalogPage, /catalogArchivePath\(kind, item\.id\)/)
+    })
+
+    it('keeps empty admin lists on-screen Add school / Add grade, with no image control', async () => {
+      const schoolsPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'SchoolsPage.tsx'),
+        'utf8',
+      )
+      const gradesPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'GradesPage.tsx'),
+        'utf8',
+      )
+      const catalogPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'CatalogNamedPage.tsx'),
+        'utf8',
+      )
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const http = await readFile(path.join(serverRoot, 'catalog', 'http.ts'), 'utf8')
+      const named = await readFile(path.join(serverRoot, 'catalog', 'named.ts'), 'utf8')
+      const api = await readFile(path.join(serverRoot, 'web', 'api.ts'), 'utf8')
+
+      assert.match(adminApp, /import \{ SchoolsPage \} from '\.\/SchoolsPage'/)
+      assert.match(adminApp, /import \{ GradesPage \} from '\.\/GradesPage'/)
+      assert.match(adminApp, /path="schools" element=\{<SchoolsPage \/>\}/)
+      assert.match(adminApp, /path="grades" element=\{<GradesPage \/>\}/)
+
+      assert.match(schoolsPage, /Add school/)
+      assert.match(schoolsPage, /There are no schools yet/)
+      assert.match(gradesPage, /Add grade/)
+      assert.match(gradesPage, /There are no grades yet/)
+      assert.match(catalogPage, /empty && !formOpen \? <p className="text-meta">\{emptyCopy\}<\/p>/)
+      assert.match(catalogPage, /\{addLabel\}/)
+      assert.match(catalogPage, /value=\{name\}/)
+      assert.match(catalogPage, /if \(problem\) \{[\s\S]*setError\(problem\)[\s\S]*return/)
+      assert.match(catalogPage, /if \(!response\.ok\) \{[\s\S]*return/)
+      assert.match(catalogPage, /credentials: 'include'/)
+      assert.match(catalogPage, /response\.status === 401/)
+      assert.match(catalogPage, /signOut/)
+      assert.match(catalogPage, /Archive/)
+      assert.match(catalogPage, /Archived/)
+      assert.doesNotMatch(catalogPage, /type="file"/)
+      assert.doesNotMatch(catalogPage, /<input[^>]*image/i)
+      assert.doesNotMatch(catalogPage, /<select/)
+      assert.doesNotMatch(gradesPage, /<select/)
+      assert.doesNotMatch(catalogPage, /Grade 13/)
+      assert.doesNotMatch(catalogPage, /method: 'DELETE'/)
+
+      assert.match(http, /lookupSession/)
+      assert.match(http, /rejectUnauthorized/)
+      assert.match(http, /role !== 'admin'/)
+      assert.doesNotMatch(http, /refuseIfNotAdmin/)
+      assert.doesNotMatch(http, /db\.prepare/)
+      assert.doesNotMatch(http, /INSERT INTO|UPDATE |DELETE FROM/)
+      assert.match(named, /livePackReferenceCount/)
+      assert.match(named, /sqlite_master/)
+      assert.match(
+        api,
+        /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
+      )
     })
   })
 })

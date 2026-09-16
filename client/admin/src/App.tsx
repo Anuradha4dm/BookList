@@ -1,6 +1,8 @@
 import { createBrowserRouter, createRoutesFromElements, Route } from 'react-router'
 import { AdminGate } from './AdminGate'
+import { GradesPage } from './GradesPage'
 import { ParentsPage } from './ParentsPage'
+import { SchoolsPage } from './SchoolsPage'
 import { SettingsPage } from './SettingsPage'
 import { Shell } from './Shell'
 
@@ -22,8 +24,8 @@ export const router = createBrowserRouter(
     <Route element={<AdminGate />}>
       <Route element={<Shell />}>
         <Route index element={<Page title="Orders" />} />
-        <Route path="schools" element={<Page title="Schools" />} />
-        <Route path="grades" element={<Page title="Grades" />} />
+        <Route path="schools" element={<SchoolsPage />} />
+        <Route path="grades" element={<GradesPage />} />
         <Route path="books" element={<Page title="Book master" />} />
         <Route path="packs" element={<Page title="Packs" />} />
         <Route path="items" element={<Page title="Items" />} />
