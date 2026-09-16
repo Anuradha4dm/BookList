@@ -9,6 +9,6 @@
     "sourceMap": true,
     "lib": ["ES2022"]
   },
-  "include": ["web/**/*.ts", "db/**/*.ts", "identity/**/*.ts"],
+  "include": ["web/**/*.ts", "db/**/*.ts", "identity/**/*.ts", "catalog/**/*.ts"],
   "exclude": ["**/*.test.ts"]
 }
