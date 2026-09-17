@@ -20,6 +20,7 @@ const MIGRATIONS: Migration[] = [
   loadMigration('001_identity_admin_sessions_and_recovery.sql'),
   loadMigration('002_identity_parents_and_session_accounts.sql'),
   loadMigration('003_catalog_schools_and_grades.sql'),
+  loadMigration('004_catalog_books.sql'),
 ]
 
 export function runMigrations(db: Database.Database): void {

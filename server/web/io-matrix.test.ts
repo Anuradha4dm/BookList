@@ -14,6 +14,13 @@ import {
   settingsPasswordBody,
 } from '../../client/admin/src/adminPasswords.ts'
 import { catalogArchivePath, catalogCollectionPath, catalogItemPath, catalogNameBody } from '../../client/admin/src/catalogNamed.ts'
+import {
+  bookBody,
+  booksArchivePath,
+  booksCollectionPath,
+  booksItemPath,
+} from '../../client/admin/src/books.ts'
+import { formatRupees } from '../../client/ui/money.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -101,6 +108,8 @@ const ADMIN_PASSWORD_PORT = String(18772)
 const adminPasswordBaseUrl = `http://127.0.0.1:${ADMIN_PASSWORD_PORT}`
 const CATALOG_PORT = String(18773)
 const catalogBaseUrl = `http://127.0.0.1:${CATALOG_PORT}`
+const BOOKS_PORT = String(18774)
+const booksBaseUrl = `http://127.0.0.1:${BOOKS_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -255,7 +264,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 3)
+        assert.equal(applied.n, 4)
       } finally {
         db.close()
       }
@@ -2189,7 +2198,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 3)
+          assert.equal(applied.n, 4)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -2202,6 +2211,10 @@ describe('I/O & edge-case matrix', () => {
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'grades'")
             .get()
           assert.ok(grades)
+          const books = upgraded
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'books'")
+            .get()
+          assert.ok(books)
 
           const kept = upgraded
             .prepare('SELECT admin_id, parent_id FROM sessions WHERE id = ?')
@@ -2768,6 +2781,484 @@ describe('I/O & edge-case matrix', () => {
       assert.doesNotMatch(http, /INSERT INTO|UPDATE |DELETE FROM/)
       assert.match(named, /livePackReferenceCount/)
       assert.match(named, /sqlite_master/)
+      assert.match(
+        api,
+        /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
+      )
+    })
+  })
+
+  describe('Book master', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.books@example.com',
+      password: 'evening-order',
+    }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${booksBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    function collectionUrl(): string {
+      return `${booksBaseUrl}/api/admin/books`
+    }
+
+    function itemUrl(id: number | string): string {
+      return `${collectionUrl()}/${id}`
+    }
+
+    function bookCount(): number {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return (db.prepare('SELECT COUNT(*) AS n FROM books').get() as { n: number }).n
+      } finally {
+        db.close()
+      }
+    }
+
+    function bookRow(id: number):
+      | { id: number; title: string; price: number; archived_at: string | null }
+      | undefined {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return db
+          .prepare('SELECT id, title, price, archived_at FROM books WHERE id = ?')
+          .get(id) as
+          | { id: number; title: string; price: number; archived_at: string | null }
+          | undefined
+      } finally {
+        db.close()
+      }
+    }
+
+    type BookJson = { id: number; title: string; price: number; archivedAt: string | null }
+
+    async function createBookRow(cookie: string, title: string, price: number): Promise<BookJson> {
+      const response = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(title, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as BookJson
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-books-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, BOOKS_PORT)
+      child = started.child
+      const registered = await fetch(`${booksBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('lists an empty array for an admin with no rows', async () => {
+      const cookie = await signInAdmin()
+      const response = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as unknown
+      assert.deepEqual(body, [])
+      assert.equal(bookCount(), 0)
+    })
+
+    it('creates a book with an integer rupee price', async () => {
+      const cookie = await signInAdmin()
+      const response = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody('  Mathematics Grade 6 (2026)  ', 9320)),
+      })
+      assert.equal(response.status, 201)
+      const raw = await response.text()
+      assert.match(raw, /"price":9320/)
+      assert.doesNotMatch(raw, /"price":"9320"/)
+      assert.doesNotMatch(raw, /"price":9320\.0/)
+      const body = JSON.parse(raw) as BookJson
+      assert.equal(typeof body.id, 'number')
+      assert.equal(body.title, 'Mathematics Grade 6 (2026)')
+      assert.equal(body.price, 9320)
+      assert.equal(typeof body.price, 'number')
+      assert.equal(Number.isInteger(body.price), true)
+      assert.equal(body.archivedAt, null)
+      const row = bookRow(body.id)
+      assert.ok(row)
+      assert.equal(row.title, 'Mathematics Grade 6 (2026)')
+      assert.equal(row.price, 9320)
+      assert.equal(row.archived_at, null)
+      assert.equal(formatRupees(body.price), 'Rs. 9,320')
+    })
+
+    it('edits title and price together and later GET shows only the new values', async () => {
+      const cookie = await signInAdmin()
+      const created = await createBookRow(cookie, 'Science Grade 6 (2025)', 450)
+      const response = await fetch(itemUrl(created.id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody('Science Grade 6 (2026)', 9320)),
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BookJson
+      assert.equal(body.id, created.id)
+      assert.equal(body.title, 'Science Grade 6 (2026)')
+      assert.equal(body.price, 9320)
+      assert.equal(Number.isInteger(body.price), true)
+      assert.equal(body.archivedAt, null)
+
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listed.status, 200)
+      const list = (await listed.json()) as BookJson[]
+      const found = list.find((item) => item.id === created.id)
+      assert.ok(found)
+      assert.equal(found.title, 'Science Grade 6 (2026)')
+      assert.equal(found.price, 9320)
+      assert.equal(found.archivedAt, null)
+      const row = bookRow(created.id)
+      assert.ok(row)
+      assert.equal(row.title, 'Science Grade 6 (2026)')
+      assert.equal(row.price, 9320)
+    })
+
+    it('archives a book, keeps it on the admin list, and stamps archivedAt', async () => {
+      const cookie = await signInAdmin()
+      const created = await createBookRow(cookie, 'English Grade 6 (2026)', 2100)
+      const response = await fetch(`${itemUrl(created.id)}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BookJson
+      assert.equal(body.id, created.id)
+      assert.equal(body.title, created.title)
+      assert.equal(body.price, created.price)
+      assert.equal(typeof body.archivedAt, 'string')
+      assert.ok(body.archivedAt)
+
+      const row = bookRow(created.id)
+      assert.ok(row)
+      assert.equal(typeof row.archived_at, 'string')
+      assert.ok(row.archived_at)
+
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listed.status, 200)
+      const list = (await listed.json()) as BookJson[]
+      const archived = list.find((item) => item.id === created.id)
+      assert.ok(archived)
+      assert.ok(archived.archivedAt)
+    })
+
+    it('refuses an empty title, float, string, or zero price without writing', async () => {
+      const cookie = await signInAdmin()
+      const created = await createBookRow(cookie, 'Keep this title', 1200)
+      const before = bookCount()
+      const beforeRow = bookRow(created.id)
+
+      const titleCases: unknown[] = ['', '   ', 12, null]
+      for (const title of titleCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ title, price: 9320 }),
+        })
+        assert.equal(createBad.status, 400, `create expected 400 for title ${JSON.stringify(title)}`)
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, 'title')
+        assert.match(createBody.error.message, /title/i)
+
+        const patchBad = await fetch(itemUrl(created.id), {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ title, price: 9320 }),
+        })
+        assert.equal(patchBad.status, 400, `patch expected 400 for title ${JSON.stringify(title)}`)
+        const patchBody = (await patchBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(patchBody.error.code, 'invalid_input')
+        assert.equal(patchBody.error.field, 'title')
+      }
+
+      const priceCases: unknown[] = [0, 9320.5, '9320', '9,320', null]
+      for (const price of priceCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ title: 'A valid title', price }),
+        })
+        assert.equal(createBad.status, 400, `create expected 400 for price ${JSON.stringify(price)}`)
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, 'price')
+
+        const patchBad = await fetch(itemUrl(created.id), {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ title: 'A valid title', price }),
+        })
+        assert.equal(patchBad.status, 400, `patch expected 400 for price ${JSON.stringify(price)}`)
+        const patchBody = (await patchBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(patchBody.error.code, 'invalid_input')
+        assert.equal(patchBody.error.field, 'price')
+      }
+
+      assert.equal(bookCount(), before)
+      assert.deepEqual(bookRow(created.id), beforeRow)
+    })
+
+    it('refuses anonymous callers with unauthenticated', async () => {
+      const adminCookie = await signInAdmin()
+      const created = await createBookRow(adminCookie, 'Anonymous gated', 700)
+      const before = bookCount()
+      const beforeRow = bookRow(created.id)
+
+      const anonymousCalls: Array<() => Promise<Response>> = [
+        () =>
+          fetch(collectionUrl(), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(bookBody('Anonymous should not', 9320)),
+          }),
+        () => fetch(collectionUrl()),
+        () =>
+          fetch(itemUrl(created.id), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(bookBody('Anonymous should not', 100)),
+          }),
+        () => fetch(`${itemUrl(created.id)}/archive`, { method: 'POST' }),
+        () => fetch(itemUrl(created.id), { method: 'DELETE' }),
+      ]
+      for (const call of anonymousCalls) {
+        const response = await call()
+        assert.equal(response.status, 401)
+        const body = (await response.json()) as { error: { code: string; message: string } }
+        assert.equal(body.error.code, 'unauthenticated')
+        assert.match(body.error.message, /[A-Za-z]/)
+      }
+
+      assert.equal(bookCount(), before)
+      assert.deepEqual(bookRow(created.id), beforeRow)
+    })
+
+    it('refuses parent GET and writes with a books-specific 403', async () => {
+      const adminCookie = await signInAdmin()
+      const created = await createBookRow(adminCookie, 'Gated book', 800)
+      const before = bookCount()
+      const beforeRow = bookRow(created.id)
+
+      const parentGet = await fetch(collectionUrl(), { headers: { cookie: parentCookie } })
+      assert.equal(parentGet.status, 403)
+      const getBody = (await parentGet.json()) as { error: { code: string; message: string } }
+      assert.equal(getBody.error.code, 'forbidden')
+      assert.match(getBody.error.message, /book/i)
+      assert.doesNotMatch(getBody.error.message, /school and grade/i)
+
+      const parentWrites: Array<() => Promise<Response>> = [
+        () =>
+          fetch(collectionUrl(), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie: parentCookie },
+            body: JSON.stringify(bookBody('Parent should not', 9320)),
+          }),
+        () =>
+          fetch(itemUrl(created.id), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', cookie: parentCookie },
+            body: JSON.stringify(bookBody('Parent should not', 100)),
+          }),
+        () =>
+          fetch(`${itemUrl(created.id)}/archive`, {
+            method: 'POST',
+            headers: { cookie: parentCookie },
+          }),
+        () =>
+          fetch(itemUrl(created.id), {
+            method: 'DELETE',
+            headers: { cookie: parentCookie },
+          }),
+      ]
+      for (const write of parentWrites) {
+        const response = await write()
+        assert.equal(response.status, 403)
+        const body = (await response.json()) as { error: { code: string; message: string } }
+        assert.equal(body.error.code, 'forbidden')
+        assert.match(body.error.message, /book/i)
+        assert.doesNotMatch(body.error.message, /school and grade/i)
+      }
+
+      assert.equal(bookCount(), before)
+      assert.deepEqual(bookRow(created.id), beforeRow)
+    })
+
+    it('refuses an unknown id without writing', async () => {
+      const cookie = await signInAdmin()
+      const before = bookCount()
+      const missing = 99999
+
+      const edit = await fetch(itemUrl(missing), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody('Missing book', 9320)),
+      })
+      assert.equal(edit.status, 404)
+      const editBody = (await edit.json()) as { error: { code: string; message: string } }
+      assert.equal(editBody.error.code, 'not_found')
+      assert.match(editBody.error.message, /[A-Za-z]/)
+
+      const archive = await fetch(`${itemUrl(missing)}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archive.status, 404)
+      const archiveBody = (await archive.json()) as { error: { code: string; message: string } }
+      assert.equal(archiveBody.error.code, 'not_found')
+      assert.match(archiveBody.error.message, /[A-Za-z]/)
+
+      const hardDelete = await fetch(itemUrl(missing), {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(hardDelete.status, 404)
+      const deleteBody = (await hardDelete.json()) as { error: { code: string; message: string } }
+      assert.equal(deleteBody.error.code, 'not_found')
+      assert.match(deleteBody.error.message, /[A-Za-z]/)
+
+      assert.equal(bookCount(), before)
+    })
+
+    it('deletes a book that no live pack references', async () => {
+      const cookie = await signInAdmin()
+      const created = await createBookRow(cookie, 'Disposable book', 300)
+      const response = await fetch(itemUrl(created.id), {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 204)
+      assert.equal(bookRow(created.id), undefined)
+    })
+
+    it('refuses DELETE while a live pack would reference the book', async () => {
+      const cookie = await signInAdmin()
+      const created = await createBookRow(cookie, 'In use book', 500)
+      const writer = new Database(dbPath)
+      try {
+        writer.exec(`
+          CREATE TABLE IF NOT EXISTS packs (
+            id INTEGER PRIMARY KEY NOT NULL,
+            archived_at TEXT
+          );
+          CREATE TABLE IF NOT EXISTS pack_books (
+            pack_id INTEGER NOT NULL,
+            book_id INTEGER NOT NULL
+          );
+        `)
+        const pack = writer.prepare('INSERT INTO packs (archived_at) VALUES (NULL)').run()
+        writer
+          .prepare('INSERT INTO pack_books (pack_id, book_id) VALUES (?, ?)')
+          .run(Number(pack.lastInsertRowid), created.id)
+      } finally {
+        writer.close()
+      }
+
+      const response = await fetch(itemUrl(created.id), {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 409)
+      const body = (await response.json()) as { error: { code: string; message: string } }
+      assert.equal(body.error.code, 'in_use')
+      assert.match(body.error.message, /[A-Za-z]/)
+      assert.ok(bookRow(created.id))
+    })
+
+    it('maps book request keys and keeps empty Add book, with filled Rs. prefix and no images', async () => {
+      const body = bookBody('Mathematics Grade 6 (2026)', 9320)
+      assert.deepEqual(body, { title: 'Mathematics Grade 6 (2026)', price: 9320 })
+      assert.deepEqual(Object.keys(body), ['title', 'price'])
+      assert.equal(booksCollectionPath(), '/api/admin/books')
+      assert.equal(booksItemPath(4), '/api/admin/books/4')
+      assert.equal(booksArchivePath(4), '/api/admin/books/4/archive')
+      assert.equal(formatRupees(9320), 'Rs. 9,320')
+
+      const booksPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'BooksPage.tsx'),
+        'utf8',
+      )
+      const booksHelpers = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'books.ts'),
+        'utf8',
+      )
+      const named = await readFile(path.join(serverRoot, 'catalog', 'named.ts'), 'utf8')
+      const http = await readFile(path.join(serverRoot, 'catalog', 'http.ts'), 'utf8')
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+      const api = await readFile(path.join(serverRoot, 'web', 'api.ts'), 'utf8')
+
+      assert.match(adminApp, /import \{ BooksPage \} from '\.\/BooksPage'/)
+      assert.match(adminApp, /path="books" element=\{<BooksPage \/>\}/)
+      assert.match(booksPage, /Add book/)
+      assert.match(booksPage, /There are no books yet/)
+      assert.match(booksPage, /formatRupees\(item\.price\)/)
+      assert.match(booksPage, /form-field-money-prefix/)
+      assert.match(booksPage, />[\s\S]*Rs\.[\s\S]*<\//)
+      assert.match(booksPage, /value=\{title\}/)
+      assert.match(booksPage, /value=\{price\}/)
+      assert.match(booksPage, /if \(titleIssue \|\| priceIssue\) \{[\s\S]*setError\(titleIssue \|\| priceIssue\)[\s\S]*return/)
+      assert.match(booksPage, /if \(!response\.ok\) \{[\s\S]*return/)
+      assert.match(booksPage, /credentials: 'include'/)
+      assert.match(booksPage, /response\.status === 401/)
+      assert.match(booksPage, /Archive/)
+      assert.match(booksPage, /Archived/)
+      assert.match(booksPage, /bookBody\(title, Number\(price\.trim\(\)\)\)/)
+      assert.doesNotMatch(booksPage, /type="file"/)
+      assert.doesNotMatch(booksPage, /<input[^>]*image/i)
+      assert.doesNotMatch(booksPage, /method: 'DELETE'/)
+      assert.doesNotMatch(booksPage, /edition/)
+      assert.doesNotMatch(booksHelpers, /NamedKind/)
+      assert.doesNotMatch(named, /'book'/)
+      assert.match(http, /lookupSession/)
+      assert.match(http, /rejectUnauthorized/)
+      assert.match(http, /BOOKS_FORBIDDEN_MESSAGE/)
+      assert.match(http, /role !== 'admin'/)
+      assert.doesNotMatch(http, /refuseIfNotAdmin/)
+      assert.doesNotMatch(http, /db\.prepare/)
+      assert.doesNotMatch(http, /INSERT INTO|UPDATE |DELETE FROM/)
+      assert.match(baseCss, /\.form-field-money-prefix/)
+      assert.match(baseCss, /--color-surface-sunken/)
       assert.match(
         api,
         /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
