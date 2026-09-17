@@ -454,7 +454,40 @@ summary,
   color: var(--color-text-primary);
 }
 
-.form-field.is-invalid .form-control {
+.form-field.is-invalid > .form-control {
+  border: var(--space-edge-strong) solid var(--color-danger);
+}
+
+.form-field-money {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: var(--space-control-h);
+  background: var(--color-surface-raised);
+  border: var(--space-edge-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-default);
+  overflow: visible;
+}
+
+.form-field-money-prefix {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0 var(--space-3);
+  background: var(--color-surface-sunken);
+  border-right: var(--space-edge-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-default) 0 0 var(--radius-default);
+  color: var(--color-text-primary);
+  overflow: hidden;
+}
+
+.form-field-money .form-control {
+  border: 0;
+  border-radius: 0 var(--radius-default) var(--radius-default) 0;
+  min-width: 0;
+}
+
+.form-field.is-invalid .form-field-money {
   border: var(--space-edge-strong) solid var(--color-danger);
 }
 
