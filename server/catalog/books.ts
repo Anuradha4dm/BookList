@@ -65,7 +65,7 @@ export function archiveBook(db: Database.Database, id: number): BookRow | undefi
   return getBook(db, id)
 }
 
-/** Live pack_books is Story 2.4; until then this is always zero. */
+/** pack_books exists as of Story 2.4; sqlite_master still guards older databases. */
 export function livePackBookReferenceCount(db: Database.Database, id: number): number {
   const packBooks = db
     .prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'pack_books'")

@@ -79,7 +79,7 @@ export function archiveNamed(
   return getNamed(db, kind, id)
 }
 
-/** Live packs table is Story 2.4; until then this is always zero. */
+/** Packs exists as of Story 2.4; sqlite_master still guards older databases. */
 export function livePackReferenceCount(
   db: Database.Database,
   kind: NamedKind,

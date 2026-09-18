@@ -47,3 +47,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-parent-register-login-and-auth-gates.md`
   summary: Auth panel widths are hardcoded and inconsistent — `.auth-gate-panel` at 400px against `.admin-login-panel` at 360px.
   evidence: Sibling dimensions such as `--space-admin-sidebar-w` are tokenised in `tokens.css`, so two untokenised and differing widths for the same kind of surface break the established discipline.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-packs-from-the-book-master.md`
+  summary: Pack description has no maximum length.
+  evidence: `validateDescription` only requires a trimmed non-empty string, so express's body limit is the only ceiling on what is stored and later rendered on the admin pack list.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-packs-from-the-book-master.md`
+  summary: Empty **Add pack** is asserted by grepping `PacksPage.tsx`, not by rendering the page.
+  evidence: There is still no client-side test runner, so `showAdd` can be inverted and the suite stays green. Same gap as the Story 1.3 client-runner deferral.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-packs-from-the-book-master.md`
+  summary: `booksForPack` inner-joins `books`, so a hard-deleted book on an archived pack disappears from admin GET.
+  evidence: `in_use` only blocks DELETE while a live pack references the book, so a book on an archived pack can be deleted and the join row is then omitted rather than shown as a missing member.
