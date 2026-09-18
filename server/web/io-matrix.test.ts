@@ -20,7 +20,15 @@ import {
   booksCollectionPath,
   booksItemPath,
 } from '../../client/admin/src/books.ts'
+import {
+  packCreateBody,
+  packPatchBody,
+  packsArchivePath,
+  packsCollectionPath,
+  packsItemPath,
+} from '../../client/admin/src/packs.ts'
 import { formatRupees } from '../../client/ui/money.ts'
+import { toStorefrontPack } from '../catalog/packs.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -110,6 +118,8 @@ const CATALOG_PORT = String(18773)
 const catalogBaseUrl = `http://127.0.0.1:${CATALOG_PORT}`
 const BOOKS_PORT = String(18774)
 const booksBaseUrl = `http://127.0.0.1:${BOOKS_PORT}`
+const PACKS_PORT = String(18775)
+const packsBaseUrl = `http://127.0.0.1:${PACKS_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -264,7 +274,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 4)
+        assert.equal(applied.n, 5)
       } finally {
         db.close()
       }
@@ -2198,7 +2208,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 4)
+          assert.equal(applied.n, 5)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -2215,6 +2225,10 @@ describe('I/O & edge-case matrix', () => {
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'books'")
             .get()
           assert.ok(books)
+          const packs = upgraded
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'packs'")
+            .get()
+          assert.ok(packs)
 
           const kept = upgraded
             .prepare('SELECT admin_id, parent_id FROM sessions WHERE id = ?')
@@ -2604,24 +2618,28 @@ describe('I/O & edge-case matrix', () => {
         it('refuses DELETE while a live pack would reference the row', async () => {
           const cookie = await signInAdmin()
           const created = await createNamed(cookie, resource.path, `${resource.sample} in use`)
+          const counterpart =
+            resource.path === 'schools'
+              ? await createNamed(cookie, 'grades', `${resource.sample} pack counterpart`)
+              : await createNamed(cookie, 'schools', `${resource.sample} pack counterpart`)
+          const schoolId = resource.packColumn === 'school_id' ? created.id : counterpart.id
+          const gradeId = resource.packColumn === 'grade_id' ? created.id : counterpart.id
           const writer = new Database(dbPath)
+          let packId = 0
           try {
-            writer.exec(`
-              CREATE TABLE IF NOT EXISTS packs (
-                id INTEGER PRIMARY KEY NOT NULL,
-                school_id INTEGER,
-                grade_id INTEGER,
-                archived_at TEXT
-              )
-            `)
-            writer
+            const inserted = writer
               .prepare(
-                `INSERT INTO packs (school_id, grade_id, archived_at) VALUES (?, ?, NULL)`,
+                `INSERT INTO packs (name, school_id, grade_id, description, archived_at, created_at)
+                 VALUES (?, ?, ?, ?, NULL, ?)`,
               )
               .run(
-                resource.packColumn === 'school_id' ? created.id : null,
-                resource.packColumn === 'grade_id' ? created.id : null,
+                `${resource.sample} live pack`,
+                schoolId,
+                gradeId,
+                'Live pack for in_use',
+                new Date().toISOString(),
               )
+            packId = Number(inserted.lastInsertRowid)
           } finally {
             writer.close()
           }
@@ -2636,6 +2654,19 @@ describe('I/O & edge-case matrix', () => {
           assert.equal(typeof body.error.message, 'string')
           assert.match(body.error.message, /[A-Za-z]/)
           assert.ok(namedRow(resource.table, created.id))
+
+          const cleanup = new Database(dbPath)
+          try {
+            cleanup.prepare('DELETE FROM packs WHERE id = ?').run(packId)
+          } finally {
+            cleanup.close()
+          }
+          const counterpartPath = resource.path === 'schools' ? 'grades' : 'schools'
+          const removed = await fetch(itemUrl(counterpartPath, counterpart.id), {
+            method: 'DELETE',
+            headers: { cookie },
+          })
+          assert.equal(removed.status, 204)
         })
 
         it('refuses parent and anonymous writes', async () => {
@@ -3174,25 +3205,28 @@ describe('I/O & edge-case matrix', () => {
     it('refuses DELETE while a live pack would reference the book', async () => {
       const cookie = await signInAdmin()
       const created = await createBookRow(cookie, 'In use book', 500)
-      const writer = new Database(dbPath)
-      try {
-        writer.exec(`
-          CREATE TABLE IF NOT EXISTS packs (
-            id INTEGER PRIMARY KEY NOT NULL,
-            archived_at TEXT
-          );
-          CREATE TABLE IF NOT EXISTS pack_books (
-            pack_id INTEGER NOT NULL,
-            book_id INTEGER NOT NULL
-          );
-        `)
-        const pack = writer.prepare('INSERT INTO packs (archived_at) VALUES (NULL)').run()
-        writer
-          .prepare('INSERT INTO pack_books (pack_id, book_id) VALUES (?, ?)')
-          .run(Number(pack.lastInsertRowid), created.id)
-      } finally {
-        writer.close()
-      }
+      const schoolResponse = await fetch(`${booksBaseUrl}/api/admin/schools`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody('In-use school')),
+      })
+      assert.equal(schoolResponse.status, 201)
+      const school = (await schoolResponse.json()) as { id: number }
+      const gradeResponse = await fetch(`${booksBaseUrl}/api/admin/grades`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody('In-use grade')),
+      })
+      assert.equal(gradeResponse.status, 201)
+      const grade = (await gradeResponse.json()) as { id: number }
+      const packResponse = await fetch(`${booksBaseUrl}/api/admin/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(
+          packCreateBody('In-use pack', school.id, grade.id, 'Live pack for in_use', [created.id]),
+        ),
+      })
+      assert.equal(packResponse.status, 201)
 
       const response = await fetch(itemUrl(created.id), {
         method: 'DELETE',
@@ -3259,6 +3293,994 @@ describe('I/O & edge-case matrix', () => {
       assert.doesNotMatch(http, /INSERT INTO|UPDATE |DELETE FROM/)
       assert.match(baseCss, /\.form-field-money-prefix/)
       assert.match(baseCss, /--color-surface-sunken/)
+      assert.match(
+        api,
+        /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
+      )
+    })
+  })
+
+  describe('Packs from the book master', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.packs@example.com',
+      password: 'evening-order',
+    }
+
+    type NamedJson = { id: number; name: string; archivedAt: string | null }
+    type BookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackBookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackJson = {
+      id: number
+      name: string
+      schoolId: number
+      gradeId: number
+      description: string
+      price: number
+      archivedAt: string | null
+      books: PackBookJson[]
+    }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${packsBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    function collectionUrl(): string {
+      return `${packsBaseUrl}/api/admin/packs`
+    }
+
+    function itemUrl(id: number | string): string {
+      return `${collectionUrl()}/${id}`
+    }
+
+    function withDb<T>(fn: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return fn(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    function packCount(): number {
+      return withDb((db) => (db.prepare('SELECT COUNT(*) AS n FROM packs').get() as { n: number }).n)
+    }
+
+    function packRow(id: number):
+      | {
+          id: number
+          name: string
+          school_id: number
+          grade_id: number
+          description: string
+          archived_at: string | null
+        }
+      | undefined {
+      return withDb(
+        (db) =>
+          db
+            .prepare(
+              'SELECT id, name, school_id, grade_id, description, archived_at FROM packs WHERE id = ?',
+            )
+            .get(id) as
+            | {
+                id: number
+                name: string
+                school_id: number
+                grade_id: number
+                description: string
+                archived_at: string | null
+              }
+            | undefined,
+      )
+    }
+
+    function packBookIds(id: number): number[] {
+      return withDb((db) =>
+        (
+          db.prepare('SELECT book_id FROM pack_books WHERE pack_id = ? ORDER BY book_id').all(id) as Array<{
+            book_id: number
+          }>
+        ).map((row) => row.book_id),
+      )
+    }
+
+    function tableExists(name: string): boolean {
+      return withDb(
+        (db) =>
+          Boolean(
+            db
+              .prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?")
+              .get(name),
+          ),
+      )
+    }
+
+    function columnNames(table: string): string[] {
+      return withDb((db) =>
+        (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
+          (row) => row.name,
+        ),
+      )
+    }
+
+    async function createNamed(
+      cookie: string,
+      resourcePath: 'schools' | 'grades',
+      name: string,
+    ): Promise<NamedJson> {
+      const response = await fetch(`${packsBaseUrl}/api/admin/${resourcePath}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody(name)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as NamedJson
+    }
+
+    async function createBookRow(cookie: string, title: string, price: number): Promise<BookJson> {
+      const response = await fetch(`${packsBaseUrl}/api/admin/books`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(title, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as BookJson
+    }
+
+    async function createPackRow(
+      cookie: string,
+      name: string,
+      schoolId: number,
+      gradeId: number,
+      description: string,
+      bookIds: number[],
+    ): Promise<PackJson> {
+      const response = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(packCreateBody(name, schoolId, gradeId, description, bookIds)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as PackJson
+    }
+
+    async function seedRefs(cookie: string): Promise<{
+      school: NamedJson
+      grade: NamedJson
+      bookA: BookJson
+      bookB: BookJson
+    }> {
+      const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const school = await createNamed(cookie, 'schools', `Pack school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Pack grade ${suffix}`)
+      const bookA = await createBookRow(cookie, `Mathematics ${suffix}`, 5000)
+      const bookB = await createBookRow(cookie, `Science ${suffix}`, 4320)
+      return { school, grade, bookA, bookB }
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-packs-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, PACKS_PORT)
+      child = started.child
+      const registered = await fetch(`${packsBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('lists an empty array for an admin with no rows', async () => {
+      const cookie = await signInAdmin()
+      const response = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as unknown
+      assert.deepEqual(body, [])
+      assert.equal(packCount(), 0)
+      assert.equal(tableExists('pack_items'), false)
+      assert.equal(columnNames('packs').includes('price'), false)
+      assert.equal(columnNames('pack_books').includes('price'), false)
+    })
+
+    it('creates a pack whose displayed price is the sum of current member prices', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const response = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(
+          packCreateBody(
+            '  Year 6 English  ',
+            refs.school.id,
+            refs.grade.id,
+            '  All titles for the year  ',
+            [refs.bookA.id, refs.bookB.id],
+          ),
+        ),
+      })
+      assert.equal(response.status, 201)
+      const raw = await response.text()
+      assert.match(raw, /"price":9320/)
+      assert.doesNotMatch(raw, /"price":"9320"/)
+      assert.doesNotMatch(raw, /"price":9320\.0/)
+      const body = JSON.parse(raw) as PackJson
+      assert.equal(typeof body.id, 'number')
+      assert.equal(body.name, 'Year 6 English')
+      assert.equal(body.schoolId, refs.school.id)
+      assert.equal(body.gradeId, refs.grade.id)
+      assert.equal(body.description, 'All titles for the year')
+      assert.equal(body.price, 9320)
+      assert.equal(typeof body.price, 'number')
+      assert.equal(Number.isInteger(body.price), true)
+      assert.equal(body.archivedAt, null)
+      assert.equal(body.books.length, 2)
+      assert.deepEqual(
+        body.books.map((book) => book.id).sort((a, b) => a - b),
+        [refs.bookA.id, refs.bookB.id].sort((a, b) => a - b),
+      )
+      const row = packRow(body.id)
+      assert.ok(row)
+      assert.equal(row.name, 'Year 6 English')
+      assert.equal(row.school_id, refs.school.id)
+      assert.equal(row.grade_id, refs.grade.id)
+      assert.equal(row.description, 'All titles for the year')
+      assert.equal(row.archived_at, null)
+      assert.equal('price' in row, false)
+      assert.deepEqual(packBookIds(body.id), [refs.bookA.id, refs.bookB.id].sort((a, b) => a - b))
+      assert.equal(formatRupees(body.price), 'Rs. 9,320')
+      assert.equal(tableExists('pack_items'), false)
+    })
+
+    it('recomputes pack price when a member book price changes', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await createPackRow(
+        cookie,
+        'Price follows books',
+        refs.school.id,
+        refs.grade.id,
+        'Sum of live members',
+        [refs.bookA.id, refs.bookB.id],
+      )
+      assert.equal(created.price, 9320)
+      const patched = await fetch(`${packsBaseUrl}/api/admin/books/${refs.bookB.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(refs.bookB.title, 6000)),
+      })
+      assert.equal(patched.status, 200)
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listed.status, 200)
+      const list = (await listed.json()) as PackJson[]
+      const found = list.find((item) => item.id === created.id)
+      assert.ok(found)
+      assert.equal(found.price, 11000)
+      assert.equal(Number.isInteger(found.price), true)
+      const row = packRow(created.id)
+      assert.ok(row)
+      assert.equal('price' in row, false)
+    })
+
+    it('edits name, description, and membership together and leaves school and grade unchanged', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const extra = await createBookRow(cookie, `History ${Date.now()}`, 800)
+      const created = await createPackRow(
+        cookie,
+        'Original pack',
+        refs.school.id,
+        refs.grade.id,
+        'Original description',
+        [refs.bookA.id, refs.bookB.id],
+      )
+      const response = await fetch(itemUrl(created.id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({
+          ...packPatchBody('Revised pack', 'Revised description', [refs.bookA.id, extra.id]),
+          schoolId: refs.school.id + 99,
+          gradeId: refs.grade.id + 99,
+        }),
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as PackJson
+      assert.equal(body.id, created.id)
+      assert.equal(body.name, 'Revised pack')
+      assert.equal(body.description, 'Revised description')
+      assert.equal(body.schoolId, refs.school.id)
+      assert.equal(body.gradeId, refs.grade.id)
+      assert.equal(body.price, 5800)
+      assert.deepEqual(
+        body.books.map((book) => book.id).sort((a, b) => a - b),
+        [refs.bookA.id, extra.id].sort((a, b) => a - b),
+      )
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      const list = (await listed.json()) as PackJson[]
+      const found = list.find((item) => item.id === created.id)
+      assert.ok(found)
+      assert.equal(found.price, 5800)
+      assert.equal(found.schoolId, refs.school.id)
+      assert.equal(found.gradeId, refs.grade.id)
+    })
+
+    it('archives a pack, keeps it on the admin list, and stamps archivedAt', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await createPackRow(
+        cookie,
+        'Archive me',
+        refs.school.id,
+        refs.grade.id,
+        'Will be archived',
+        [refs.bookA.id],
+      )
+      const response = await fetch(`${itemUrl(created.id)}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as PackJson
+      assert.equal(body.id, created.id)
+      assert.equal(typeof body.archivedAt, 'string')
+      assert.ok(body.archivedAt)
+      const row = packRow(created.id)
+      assert.ok(row)
+      assert.equal(typeof row.archived_at, 'string')
+      assert.ok(row.archived_at)
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listed.status, 200)
+      const list = (await listed.json()) as PackJson[]
+      const archived = list.find((item) => item.id === created.id)
+      assert.ok(archived)
+      assert.ok(archived.archivedAt)
+    })
+
+    it('keeps an archived member on admin GET, drops it from price, and omits it from the storefront projection', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await createPackRow(
+        cookie,
+        'Archive a member',
+        refs.school.id,
+        refs.grade.id,
+        'Member will drop off the sum',
+        [refs.bookA.id, refs.bookB.id],
+      )
+      const archived = await fetch(`${packsBaseUrl}/api/admin/books/${refs.bookB.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archived.status, 200)
+      const listed = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listed.status, 200)
+      const list = (await listed.json()) as PackJson[]
+      const found = list.find((item) => item.id === created.id)
+      assert.ok(found)
+      assert.equal(found.price, 5000)
+      const archivedMember = found.books.find((book) => book.id === refs.bookB.id)
+      assert.ok(archivedMember)
+      assert.equal(typeof archivedMember.archivedAt, 'string')
+      assert.ok(archivedMember.archivedAt)
+      const liveMember = found.books.find((book) => book.id === refs.bookA.id)
+      assert.ok(liveMember)
+      assert.equal(liveMember.archivedAt, null)
+      assert.deepEqual(packBookIds(created.id), [refs.bookA.id, refs.bookB.id].sort((a, b) => a - b))
+      const storefront = toStorefrontPack(found)
+      assert.deepEqual(
+        storefront.books.map((book) => book.id),
+        [refs.bookA.id],
+      )
+      assert.equal(storefront.price, 5000)
+      assert.ok(storefront.books.every((book) => book.archivedAt === null))
+      const projected = toStorefrontPack({
+        id: 1,
+        name: 'Year 6',
+        schoolId: 1,
+        gradeId: 1,
+        description: 'List',
+        price: 5000,
+        archivedAt: null,
+        books: [
+          { id: 1, title: 'A', price: 5000, archivedAt: null },
+          { id: 2, title: 'B', price: 4320, archivedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      })
+      assert.deepEqual(projected.books, [{ id: 1, title: 'A', price: 5000, archivedAt: null }])
+      assert.equal(projected.price, 5000)
+
+      const patched = await fetch(itemUrl(created.id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(
+          packPatchBody('Archive a member', 'Member will drop off the sum', [refs.bookA.id]),
+        ),
+      })
+      assert.equal(patched.status, 200)
+      const patchedBody = (await patched.json()) as PackJson
+      assert.equal(patchedBody.price, 5000)
+      const stillArchived = patchedBody.books.find((book) => book.id === refs.bookB.id)
+      assert.ok(stillArchived)
+      assert.equal(typeof stillArchived.archivedAt, 'string')
+      assert.ok(stillArchived.archivedAt)
+      assert.deepEqual(packBookIds(created.id), [refs.bookA.id, refs.bookB.id].sort((a, b) => a - b))
+
+      const archiveLast = await fetch(`${packsBaseUrl}/api/admin/books/${refs.bookA.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archiveLast.status, 200)
+      const listedEmpty = await fetch(collectionUrl(), { headers: { cookie } })
+      assert.equal(listedEmpty.status, 200)
+      const emptyLive = ((await listedEmpty.json()) as PackJson[]).find(
+        (item) => item.id === created.id,
+      )
+      assert.ok(emptyLive)
+      assert.equal(emptyLive.price, 0)
+      assert.equal(emptyLive.books.length, 2)
+      assert.ok(emptyLive.books.every((book) => typeof book.archivedAt === 'string' && book.archivedAt))
+    })
+
+    it('refuses empty name, description, empty bookIds, unknown or archived refs, and duplicate ids', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await createPackRow(
+        cookie,
+        'Keep this pack',
+        refs.school.id,
+        refs.grade.id,
+        'Keep this description',
+        [refs.bookA.id],
+      )
+      const before = packCount()
+      const beforeRow = packRow(created.id)
+      const beforeBooks = packBookIds(created.id)
+
+      const nameCases: unknown[] = ['', '   ', 12, null]
+      for (const name of nameCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            name,
+            schoolId: refs.school.id,
+            gradeId: refs.grade.id,
+            description: 'Valid description',
+            bookIds: [refs.bookA.id],
+          }),
+        })
+        assert.equal(createBad.status, 400, `create expected 400 for name ${JSON.stringify(name)}`)
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, 'name')
+
+        const patchBad = await fetch(itemUrl(created.id), {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ name, description: 'Valid description', bookIds: [refs.bookA.id] }),
+        })
+        assert.equal(patchBad.status, 400, `patch expected 400 for name ${JSON.stringify(name)}`)
+        const patchBody = (await patchBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(patchBody.error.code, 'invalid_input')
+        assert.equal(patchBody.error.field, 'name')
+      }
+
+      const descriptionCases: unknown[] = ['', '   ', 12, null]
+      for (const description of descriptionCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            name: 'Valid pack',
+            schoolId: refs.school.id,
+            gradeId: refs.grade.id,
+            description,
+            bookIds: [refs.bookA.id],
+          }),
+        })
+        assert.equal(
+          createBad.status,
+          400,
+          `create expected 400 for description ${JSON.stringify(description)}`,
+        )
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, 'description')
+
+        const patchBad = await fetch(itemUrl(created.id), {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            name: 'Keep this pack',
+            description,
+            bookIds: [refs.bookA.id],
+          }),
+        })
+        assert.equal(
+          patchBad.status,
+          400,
+          `patch expected 400 for description ${JSON.stringify(description)}`,
+        )
+        const patchBody = (await patchBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(patchBody.error.code, 'invalid_input')
+        assert.equal(patchBody.error.field, 'description')
+      }
+
+      const bookIdCases: Array<{ bookIds: unknown; reason: string }> = [
+        { bookIds: [], reason: 'empty' },
+        { bookIds: [refs.bookA.id, refs.bookA.id], reason: 'duplicate' },
+        { bookIds: [99999], reason: 'unknown' },
+      ]
+      for (const { bookIds, reason } of bookIdCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            name: 'Valid pack',
+            schoolId: refs.school.id,
+            gradeId: refs.grade.id,
+            description: 'Valid description',
+            bookIds,
+          }),
+        })
+        assert.equal(createBad.status, 400, `create expected 400 for bookIds ${reason}`)
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, 'bookIds')
+
+        const patchBad = await fetch(itemUrl(created.id), {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({
+            name: 'Keep this pack',
+            description: 'Keep this description',
+            bookIds,
+          }),
+        })
+        assert.equal(patchBad.status, 400, `patch expected 400 for bookIds ${reason}`)
+        const patchBody = (await patchBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(patchBody.error.code, 'invalid_input')
+        assert.equal(patchBody.error.field, 'bookIds')
+        assert.deepEqual(packBookIds(created.id), beforeBooks)
+      }
+
+      const archivedSchool = await createNamed(cookie, 'schools', `Archived school ${Date.now()}`)
+      const archiveSchool = await fetch(
+        `${packsBaseUrl}/api/admin/schools/${archivedSchool.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archiveSchool.status, 200)
+      const archivedGrade = await createNamed(cookie, 'grades', `Archived grade ${Date.now()}`)
+      const archiveGrade = await fetch(
+        `${packsBaseUrl}/api/admin/grades/${archivedGrade.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archiveGrade.status, 200)
+      const archivedBook = await createBookRow(cookie, `Archived book ${Date.now()}`, 300)
+      const archiveBook = await fetch(`${packsBaseUrl}/api/admin/books/${archivedBook.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archiveBook.status, 200)
+
+      const archivedRefCases: Array<{ body: Record<string, unknown>; field: string }> = [
+        {
+          body: {
+            name: 'Valid pack',
+            schoolId: archivedSchool.id,
+            gradeId: refs.grade.id,
+            description: 'Valid description',
+            bookIds: [refs.bookA.id],
+          },
+          field: 'schoolId',
+        },
+        {
+          body: {
+            name: 'Valid pack',
+            schoolId: 99999,
+            gradeId: refs.grade.id,
+            description: 'Valid description',
+            bookIds: [refs.bookA.id],
+          },
+          field: 'schoolId',
+        },
+        {
+          body: {
+            name: 'Valid pack',
+            schoolId: refs.school.id,
+            gradeId: archivedGrade.id,
+            description: 'Valid description',
+            bookIds: [refs.bookA.id],
+          },
+          field: 'gradeId',
+        },
+        {
+          body: {
+            name: 'Valid pack',
+            schoolId: refs.school.id,
+            gradeId: refs.grade.id,
+            description: 'Valid description',
+            bookIds: [archivedBook.id],
+          },
+          field: 'bookIds',
+        },
+      ]
+      for (const { body, field } of archivedRefCases) {
+        const createBad = await fetch(collectionUrl(), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify(body),
+        })
+        assert.equal(createBad.status, 400, `create expected 400 for ${field}`)
+        const createBody = (await createBad.json()) as {
+          error: { code: string; message: string; field?: string }
+        }
+        assert.equal(createBody.error.code, 'invalid_input')
+        assert.equal(createBody.error.field, field)
+      }
+
+      assert.equal(packCount(), before)
+      assert.deepEqual(packRow(created.id), beforeRow)
+      assert.deepEqual(packBookIds(created.id), beforeBooks)
+    })
+
+    it('ignores itemIds and never persists pack_items', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({
+          ...packCreateBody(
+            'Items ignored',
+            refs.school.id,
+            refs.grade.id,
+            'Books only',
+            [refs.bookA.id],
+          ),
+          itemIds: [refs.bookB.id, 999],
+        }),
+      })
+      assert.equal(created.status, 201)
+      const body = (await created.json()) as PackJson
+      assert.deepEqual(
+        body.books.map((book) => book.id),
+        [refs.bookA.id],
+      )
+      assert.equal(tableExists('pack_items'), false)
+
+      const onlyItems = await fetch(collectionUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({
+          name: 'Items only',
+          schoolId: refs.school.id,
+          gradeId: refs.grade.id,
+          description: 'Should fail',
+          itemIds: [refs.bookA.id],
+        }),
+      })
+      assert.equal(onlyItems.status, 400)
+      const onlyItemsBody = (await onlyItems.json()) as {
+        error: { code: string; message: string; field?: string }
+      }
+      assert.equal(onlyItemsBody.error.code, 'invalid_input')
+      assert.equal(onlyItemsBody.error.field, 'bookIds')
+      assert.equal(tableExists('pack_items'), false)
+
+      const nonBook = await fetch(itemUrl(body.id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({
+          name: 'Still books',
+          description: 'Non-book id',
+          bookIds: [99999],
+          itemIds: [refs.bookB.id],
+        }),
+      })
+      assert.equal(nonBook.status, 400)
+      const nonBookBody = (await nonBook.json()) as {
+        error: { code: string; message: string; field?: string }
+      }
+      assert.equal(nonBookBody.error.code, 'invalid_input')
+      assert.equal(nonBookBody.error.field, 'bookIds')
+      assert.deepEqual(packBookIds(body.id), [refs.bookA.id])
+    })
+
+    it('refuses anonymous callers with unauthenticated', async () => {
+      const adminCookie = await signInAdmin()
+      const refs = await seedRefs(adminCookie)
+      const created = await createPackRow(
+        adminCookie,
+        'Anonymous gated',
+        refs.school.id,
+        refs.grade.id,
+        'Gated pack',
+        [refs.bookA.id],
+      )
+      const before = packCount()
+      const beforeRow = packRow(created.id)
+
+      const anonymousCalls: Array<() => Promise<Response>> = [
+        () =>
+          fetch(collectionUrl(), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(
+              packCreateBody('Anonymous should not', refs.school.id, refs.grade.id, 'No', [
+                refs.bookA.id,
+              ]),
+            ),
+          }),
+        () => fetch(collectionUrl()),
+        () =>
+          fetch(itemUrl(created.id), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(packPatchBody('Anonymous should not', 'No', [refs.bookA.id])),
+          }),
+        () => fetch(`${itemUrl(created.id)}/archive`, { method: 'POST' }),
+      ]
+      for (const call of anonymousCalls) {
+        const response = await call()
+        assert.equal(response.status, 401)
+        const body = (await response.json()) as { error: { code: string; message: string } }
+        assert.equal(body.error.code, 'unauthenticated')
+        assert.match(body.error.message, /[A-Za-z]/)
+      }
+
+      assert.equal(packCount(), before)
+      assert.deepEqual(packRow(created.id), beforeRow)
+    })
+
+    it('refuses parent GET and writes with a packs-specific 403', async () => {
+      const adminCookie = await signInAdmin()
+      const refs = await seedRefs(adminCookie)
+      const created = await createPackRow(
+        adminCookie,
+        'Gated pack',
+        refs.school.id,
+        refs.grade.id,
+        'Parent cannot write',
+        [refs.bookA.id],
+      )
+      const before = packCount()
+      const beforeRow = packRow(created.id)
+
+      const parentGet = await fetch(collectionUrl(), { headers: { cookie: parentCookie } })
+      assert.equal(parentGet.status, 403)
+      const getBody = (await parentGet.json()) as { error: { code: string; message: string } }
+      assert.equal(getBody.error.code, 'forbidden')
+      assert.match(getBody.error.message, /pack/i)
+      assert.doesNotMatch(getBody.error.message, /school and grade/i)
+      assert.doesNotMatch(getBody.error.message, /book list/i)
+
+      const parentWrites: Array<() => Promise<Response>> = [
+        () =>
+          fetch(collectionUrl(), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie: parentCookie },
+            body: JSON.stringify(
+              packCreateBody('Parent should not', refs.school.id, refs.grade.id, 'No', [
+                refs.bookA.id,
+              ]),
+            ),
+          }),
+        () =>
+          fetch(itemUrl(created.id), {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', cookie: parentCookie },
+            body: JSON.stringify(packPatchBody('Parent should not', 'No', [refs.bookA.id])),
+          }),
+        () =>
+          fetch(`${itemUrl(created.id)}/archive`, {
+            method: 'POST',
+            headers: { cookie: parentCookie },
+          }),
+      ]
+      for (const write of parentWrites) {
+        const response = await write()
+        assert.equal(response.status, 403)
+        const body = (await response.json()) as { error: { code: string; message: string } }
+        assert.equal(body.error.code, 'forbidden')
+        assert.match(body.error.message, /pack/i)
+        assert.doesNotMatch(body.error.message, /school and grade/i)
+        assert.doesNotMatch(body.error.message, /book list/i)
+      }
+
+      assert.equal(packCount(), before)
+      assert.deepEqual(packRow(created.id), beforeRow)
+    })
+
+    it('refuses an unknown id without writing', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const before = packCount()
+      const missing = 99999
+
+      const edit = await fetch(itemUrl(missing), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(packPatchBody('Missing pack', 'Missing', [refs.bookA.id])),
+      })
+      assert.equal(edit.status, 404)
+      const editBody = (await edit.json()) as { error: { code: string; message: string } }
+      assert.equal(editBody.error.code, 'not_found')
+      assert.match(editBody.error.message, /[A-Za-z]/)
+
+      const archive = await fetch(`${itemUrl(missing)}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archive.status, 404)
+      const archiveBody = (await archive.json()) as { error: { code: string; message: string } }
+      assert.equal(archiveBody.error.code, 'not_found')
+      assert.match(archiveBody.error.message, /[A-Za-z]/)
+
+      assert.equal(packCount(), before)
+    })
+
+    it('refuses DELETE of a school, grade, or book used by a live pack', async () => {
+      const cookie = await signInAdmin()
+      const refs = await seedRefs(cookie)
+      const created = await createPackRow(
+        cookie,
+        'Live guard pack',
+        refs.school.id,
+        refs.grade.id,
+        'Holds references',
+        [refs.bookA.id],
+      )
+
+      const schoolDelete = await fetch(`${packsBaseUrl}/api/admin/schools/${refs.school.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(schoolDelete.status, 409)
+      const schoolBody = (await schoolDelete.json()) as { error: { code: string } }
+      assert.equal(schoolBody.error.code, 'in_use')
+
+      const gradeDelete = await fetch(`${packsBaseUrl}/api/admin/grades/${refs.grade.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(gradeDelete.status, 409)
+      const gradeBody = (await gradeDelete.json()) as { error: { code: string } }
+      assert.equal(gradeBody.error.code, 'in_use')
+
+      const bookDelete = await fetch(`${packsBaseUrl}/api/admin/books/${refs.bookA.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(bookDelete.status, 409)
+      const bookBody = (await bookDelete.json()) as { error: { code: string } }
+      assert.equal(bookBody.error.code, 'in_use')
+
+      const packDelete = await fetch(itemUrl(created.id), {
+        method: 'DELETE',
+        headers: { cookie },
+      })
+      assert.equal(packDelete.status, 404)
+      assert.ok(packRow(created.id))
+    })
+
+    it('maps pack request keys and keeps empty Add pack, with computed Rs. display and no images', async () => {
+      const createBody = packCreateBody('Year 6 English', 1, 2, 'All titles', [3, 4])
+      assert.deepEqual(createBody, {
+        name: 'Year 6 English',
+        schoolId: 1,
+        gradeId: 2,
+        description: 'All titles',
+        bookIds: [3, 4],
+      })
+      assert.deepEqual(Object.keys(createBody), [
+        'name',
+        'schoolId',
+        'gradeId',
+        'description',
+        'bookIds',
+      ])
+      const patchBody = packPatchBody('Year 6 English', 'All titles', [3, 4])
+      assert.deepEqual(Object.keys(patchBody), ['name', 'description', 'bookIds'])
+      assert.equal(packsCollectionPath(), '/api/admin/packs')
+      assert.equal(packsItemPath(4), '/api/admin/packs/4')
+      assert.equal(packsArchivePath(4), '/api/admin/packs/4/archive')
+      assert.equal(formatRupees(9320), 'Rs. 9,320')
+
+      const packsPage = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'PacksPage.tsx'),
+        'utf8',
+      )
+      const packsHelpers = await readFile(
+        path.join(repoRoot, 'client', 'admin', 'src', 'packs.ts'),
+        'utf8',
+      )
+      const http = await readFile(path.join(serverRoot, 'catalog', 'http.ts'), 'utf8')
+      const packsModule = await readFile(path.join(serverRoot, 'catalog', 'packs.ts'), 'utf8')
+      const migration = await readFile(
+        path.join(serverRoot, 'db', 'migrations', '005_catalog_packs.sql'),
+        'utf8',
+      )
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const api = await readFile(path.join(serverRoot, 'web', 'api.ts'), 'utf8')
+
+      assert.match(adminApp, /import \{ PacksPage \} from '\.\/PacksPage'/)
+      assert.match(adminApp, /path="packs" element=\{<PacksPage \/>\}/)
+      assert.match(packsPage, /Add pack/)
+      assert.match(packsPage, /There are no packs yet/)
+      assert.match(packsPage, /formatRupees\(item\.price\)/)
+      assert.match(packsPage, /value=\{name\}/)
+      assert.match(packsPage, /value=\{description\}/)
+      assert.match(packsPage, /<select/)
+      assert.match(packsPage, /type="checkbox"/)
+      assert.match(packsPage, /<textarea/)
+      assert.match(packsPage, /if \(nameIssue \|\| descriptionIssue \|\| schoolIssue \|\| gradeIssue \|\| booksIssue\) \{[\s\S]*setError\(nameIssue \|\| descriptionIssue \|\| schoolIssue \|\| gradeIssue \|\| booksIssue\)[\s\S]*return/)
+      assert.match(packsPage, /if \(!response\.ok\) \{[\s\S]*return/)
+      assert.match(packsPage, /credentials: 'include'/)
+      assert.match(packsPage, /response\.status === 401/)
+      assert.match(packsPage, /Archive/)
+      assert.match(packsPage, /Archived/)
+      assert.match(packsPage, /packCreateBody\(/)
+      assert.match(packsPage, /packPatchBody\(/)
+      assert.doesNotMatch(packsPage, /type="file"/)
+      assert.doesNotMatch(packsPage, /<input[^>]*image/i)
+      assert.doesNotMatch(packsPage, /form-field-money/)
+      assert.doesNotMatch(packsPage, /name="price"/)
+      assert.doesNotMatch(packsPage, /method: 'DELETE'/)
+      assert.doesNotMatch(packsHelpers, /NamedKind/)
+      assert.match(http, /lookupSession/)
+      assert.match(http, /rejectUnauthorized/)
+      assert.match(http, /PACKS_FORBIDDEN_MESSAGE/)
+      assert.match(http, /role !== 'admin'/)
+      assert.match(http, /mountPacks/)
+      assert.doesNotMatch(http, /refuseIfNotAdmin/)
+      assert.doesNotMatch(http, /db\.prepare/)
+      assert.doesNotMatch(http, /INSERT INTO|UPDATE |DELETE FROM/)
+      assert.match(packsModule, /toStorefrontPack/)
+      assert.match(packsModule, /archivedAt === null/)
+      assert.doesNotMatch(migration, /pack_items/)
+      assert.doesNotMatch(migration, /\bprice\b/)
+      assert.match(migration, /school_id/)
+      assert.match(migration, /grade_id/)
+      assert.match(migration, /pack_id/)
+      assert.match(migration, /book_id/)
       assert.match(
         api,
         /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
