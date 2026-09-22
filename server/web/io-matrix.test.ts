@@ -33,6 +33,12 @@ import {
   packsCollectionPath,
   packsItemPath,
 } from '../../client/admin/src/packs.ts'
+import {
+  browseGradesPath,
+  browseItemsPath,
+  browsePacksPath,
+  browseSchoolsPath,
+} from '../../client/storefront/src/browse.ts'
 import { formatRupees } from '../../client/ui/money.ts'
 import { toStorefrontPack } from '../catalog/packs.ts'
 
@@ -128,6 +134,8 @@ const PACKS_PORT = String(18775)
 const packsBaseUrl = `http://127.0.0.1:${PACKS_PORT}`
 const ITEMS_PORT = String(18776)
 const itemsBaseUrl = `http://127.0.0.1:${ITEMS_PORT}`
+const BROWSE_PORT = String(18777)
+const browseBaseUrl = `http://127.0.0.1:${BROWSE_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -360,7 +368,8 @@ describe('I/O & edge-case matrix', () => {
         css,
         /\.tabbar-item\.is-active\s*\{[\s\S]*background:\s*var\(--color-accent-primary\)[\s\S]*border-color:\s*var\(--color-border-strong\)[\s\S]*color:\s*var\(--color-text-on-accent\)/,
       )
-      assert.match(storefrontApp, /<Route index element=\{<Page title="Browse" \/>\} \/>/)
+      assert.match(storefrontApp, /element=\{<BrowsePage \/>\}/)
+      assert.match(storefrontApp, /path="items" element=\{<ItemsPage \/>\}/)
     })
 
     it('switches to a top nav at 760px and caps the content column at 760px', async () => {
@@ -1142,7 +1151,9 @@ describe('I/O & edge-case matrix', () => {
         assert.match(gated, new RegExp(`path="${tab}"`))
       }
       assert.doesNotMatch(app, /<Route index element=\{<AuthGate/)
-      assert.match(app, /<Route index element=\{<Page title="Browse" \/>\} \/>/)
+      assert.match(app, /<Route index element=\{<BrowsePage \/>\} \/>/)
+      assert.match(app, /path="items" element=\{<ItemsPage \/>\}/)
+      assert.doesNotMatch(gated, /path="items"/)
 
       assert.match(gate, /navigate\('\/', \{ replace: true \}\)/)
       assert.match(gate, /Log in/)
@@ -4855,6 +4866,505 @@ describe('I/O & edge-case matrix', () => {
         api,
         /createIdentityRouter\(db, env\)\)\s*router\.use\(createCatalogRouter\(db, env\)\)/,
       )
+    })
+  })
+
+  describe('Browse packs and items', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.browse@example.com',
+      password: 'evening-order',
+    }
+
+    type NamedJson = { id: number; name: string; archivedAt: string | null }
+    type BookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackBookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackJson = {
+      id: number
+      name: string
+      schoolId: number
+      gradeId: number
+      description: string
+      price: number
+      archivedAt: string | null
+      books: PackBookJson[]
+    }
+    type ItemJson = {
+      id: number
+      title: string
+      description: string
+      price: number
+      archivedAt: string | null
+    }
+    type BrowseNamed = { id: number; name: string }
+    type BrowsePack = { id: number; name: string; description: string; price: number }
+    type BrowseItem = { id: number; title: string; description: string; price: number }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${browseBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function createNamed(
+      cookie: string,
+      resourcePath: 'schools' | 'grades',
+      name: string,
+    ): Promise<NamedJson> {
+      const response = await fetch(`${browseBaseUrl}/api/admin/${resourcePath}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody(name)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as NamedJson
+    }
+
+    async function createBookRow(cookie: string, title: string, price: number): Promise<BookJson> {
+      const response = await fetch(`${browseBaseUrl}/api/admin/books`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(title, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as BookJson
+    }
+
+    async function createPackRow(
+      cookie: string,
+      name: string,
+      schoolId: number,
+      gradeId: number,
+      description: string,
+      bookIds: number[],
+    ): Promise<PackJson> {
+      const response = await fetch(`${browseBaseUrl}/api/admin/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(packCreateBody(name, schoolId, gradeId, description, bookIds)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as PackJson
+    }
+
+    async function createItemRow(
+      cookie: string,
+      title: string,
+      description: string,
+      price: number,
+    ): Promise<ItemJson> {
+      const response = await fetch(`${browseBaseUrl}/api/admin/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(itemBody(title, description, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as ItemJson
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-browse-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, BROWSE_PORT)
+      child = started.child
+      const registered = await fetch(`${browseBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('returns an empty school list when there are no packs', async () => {
+      const response = await fetch(`${browseBaseUrl}${browseSchoolsPath()}`)
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), [])
+    })
+
+    it('lists only schools with a live pack and omits archived schools', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-schools`
+      const liveSchool = await createNamed(cookie, 'schools', `Live school ${suffix}`)
+      const archivedSchool = await createNamed(cookie, 'schools', `Archived school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Grade ${suffix}`)
+      const book = await createBookRow(cookie, `Book ${suffix}`, 1000)
+      await createPackRow(cookie, `Live pack ${suffix}`, liveSchool.id, grade.id, 'Live', [book.id])
+      const archivedPack = await createPackRow(
+        cookie,
+        `Archived pack ${suffix}`,
+        archivedSchool.id,
+        grade.id,
+        'Archived',
+        [book.id],
+      )
+      const archivePack = await fetch(
+        `${browseBaseUrl}/api/admin/packs/${archivedPack.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archivePack.status, 200)
+      const archiveSchool = await fetch(
+        `${browseBaseUrl}/api/admin/schools/${archivedSchool.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archiveSchool.status, 200)
+
+      const response = await fetch(`${browseBaseUrl}${browseSchoolsPath()}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BrowseNamed[]
+      assert.ok(body.some((row) => row.id === liveSchool.id && row.name === liveSchool.name))
+      assert.equal(
+        body.some((row) => row.id === archivedSchool.id),
+        false,
+      )
+      for (const row of body) {
+        assert.deepEqual(Object.keys(row).sort(), ['id', 'name'])
+      }
+    })
+
+    it('omits a live school whose only pack is archived', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-only-archived-pack`
+      const school = await createNamed(cookie, 'schools', `Only archived pack ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Only archived pack grade ${suffix}`)
+      const book = await createBookRow(cookie, `Only archived pack book ${suffix}`, 1100)
+      const pack = await createPackRow(
+        cookie,
+        `Only archived pack ${suffix}`,
+        school.id,
+        grade.id,
+        'Will archive',
+        [book.id],
+      )
+      const archive = await fetch(`${browseBaseUrl}/api/admin/packs/${pack.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archive.status, 200)
+
+      const response = await fetch(`${browseBaseUrl}${browseSchoolsPath()}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BrowseNamed[]
+      assert.equal(
+        body.some((row) => row.id === school.id),
+        false,
+      )
+    })
+
+    it('omits a live school whose only live pack sits on an archived grade', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-archived-grade`
+      const school = await createNamed(cookie, 'schools', `Archived grade school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Archived grade ${suffix}`)
+      const book = await createBookRow(cookie, `Archived grade book ${suffix}`, 1200)
+      await createPackRow(
+        cookie,
+        `Archived grade pack ${suffix}`,
+        school.id,
+        grade.id,
+        'Live pack on archived grade',
+        [book.id],
+      )
+      const archiveGrade = await fetch(`${browseBaseUrl}/api/admin/grades/${grade.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archiveGrade.status, 200)
+
+      const schools = await fetch(`${browseBaseUrl}${browseSchoolsPath()}`)
+      assert.equal(schools.status, 200)
+      const schoolBody = (await schools.json()) as BrowseNamed[]
+      assert.equal(
+        schoolBody.some((row) => row.id === school.id),
+        false,
+      )
+
+      const grades = await fetch(`${browseBaseUrl}${browseGradesPath(school.id)}`)
+      assert.equal(grades.status, 200)
+      const gradeBody = (await grades.json()) as BrowseNamed[]
+      assert.equal(
+        gradeBody.some((row) => row.id === grade.id),
+        false,
+      )
+
+      const packs = await fetch(`${browseBaseUrl}${browsePacksPath(school.id, grade.id)}`)
+      assert.equal(packs.status, 200)
+      assert.deepEqual(await packs.json(), [])
+    })
+
+    it('sends cache-control no-store on every browse GET', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-cache`
+      const school = await createNamed(cookie, 'schools', `Cache school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Cache grade ${suffix}`)
+      const book = await createBookRow(cookie, `Cache book ${suffix}`, 1300)
+      await createPackRow(cookie, `Cache pack ${suffix}`, school.id, grade.id, 'Cache', [book.id])
+      await createItemRow(cookie, `Cache item ${suffix}`, 'Cache item', 1400)
+
+      const paths = [
+        browseSchoolsPath(),
+        browseGradesPath(school.id),
+        browsePacksPath(school.id, grade.id),
+        browseItemsPath(),
+      ]
+      for (const pathSuffix of paths) {
+        const response = await fetch(`${browseBaseUrl}${pathSuffix}`)
+        assert.equal(response.status, 200)
+        assert.equal(response.headers.get('cache-control'), 'no-store')
+        await response.json()
+      }
+    })
+
+    it('lists grades with a live pack for the school and rejects a non-integer schoolId', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-grades`
+      const school = await createNamed(cookie, 'schools', `Grade school ${suffix}`)
+      const otherSchool = await createNamed(cookie, 'schools', `Other school ${suffix}`)
+      const liveGrade = await createNamed(cookie, 'grades', `Live grade ${suffix}`)
+      const unusedGrade = await createNamed(cookie, 'grades', `Unused grade ${suffix}`)
+      const book = await createBookRow(cookie, `Grade book ${suffix}`, 2000)
+      await createPackRow(
+        cookie,
+        `Grade pack ${suffix}`,
+        school.id,
+        liveGrade.id,
+        'For grade',
+        [book.id],
+      )
+      await createPackRow(
+        cookie,
+        `Other pack ${suffix}`,
+        otherSchool.id,
+        unusedGrade.id,
+        'Other school only',
+        [book.id],
+      )
+
+      const response = await fetch(`${browseBaseUrl}${browseGradesPath(school.id)}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BrowseNamed[]
+      assert.deepEqual(
+        body.filter((row) => row.id === liveGrade.id || row.id === unusedGrade.id),
+        [{ id: liveGrade.id, name: liveGrade.name }],
+      )
+
+      const unknown = await fetch(`${browseBaseUrl}${browseGradesPath(99999)}`)
+      assert.equal(unknown.status, 200)
+      assert.deepEqual(await unknown.json(), [])
+
+      const bad = await fetch(`${browseBaseUrl}/api/browse/grades?schoolId=abc`)
+      assert.equal(bad.status, 400)
+      const badBody = (await bad.json()) as { error: { code: string; field?: string } }
+      assert.equal(badBody.error.code, 'invalid_input')
+      assert.equal(badBody.error.field, 'schoolId')
+    })
+
+    it('lists live packs with a price that omits archived books and no books array', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-packs`
+      const school = await createNamed(cookie, 'schools', `Pack school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Pack grade ${suffix}`)
+      const liveBook = await createBookRow(cookie, `Live book ${suffix}`, 5000)
+      const archivedBook = await createBookRow(cookie, `Archived book ${suffix}`, 4320)
+      const livePack = await createPackRow(
+        cookie,
+        `Browse pack ${suffix}`,
+        school.id,
+        grade.id,
+        'Pack description',
+        [liveBook.id, archivedBook.id],
+      )
+      const archivedPack = await createPackRow(
+        cookie,
+        `Hidden pack ${suffix}`,
+        school.id,
+        grade.id,
+        'Should hide',
+        [liveBook.id],
+      )
+      const archiveBook = await fetch(
+        `${browseBaseUrl}/api/admin/books/${archivedBook.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archiveBook.status, 200)
+      const archivePack = await fetch(
+        `${browseBaseUrl}/api/admin/packs/${archivedPack.id}/archive`,
+        { method: 'POST', headers: { cookie } },
+      )
+      assert.equal(archivePack.status, 200)
+
+      const response = await fetch(`${browseBaseUrl}${browsePacksPath(school.id, grade.id)}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BrowsePack[]
+      const found = body.find((row) => row.id === livePack.id)
+      assert.ok(found)
+      assert.equal(found.name, livePack.name)
+      assert.equal(found.description, 'Pack description')
+      assert.equal(found.price, 5000)
+      assert.equal(formatRupees(found.price), 'Rs. 5,000')
+      assert.equal('books' in found, false)
+      assert.deepEqual(Object.keys(found).sort(), ['description', 'id', 'name', 'price'])
+      assert.equal(
+        body.some((row) => row.id === archivedPack.id),
+        false,
+      )
+
+      const badSchool = await fetch(
+        `${browseBaseUrl}/api/browse/packs?schoolId=1.5&gradeId=${grade.id}`,
+      )
+      assert.equal(badSchool.status, 400)
+      const badSchoolBody = (await badSchool.json()) as { error: { code: string; field?: string } }
+      assert.equal(badSchoolBody.error.code, 'invalid_input')
+      assert.equal(badSchoolBody.error.field, 'schoolId')
+
+      const badGrade = await fetch(
+        `${browseBaseUrl}/api/browse/packs?schoolId=${school.id}&gradeId=nope`,
+      )
+      assert.equal(badGrade.status, 400)
+      const badGradeBody = (await badGrade.json()) as { error: { code: string; field?: string } }
+      assert.equal(badGradeBody.error.code, 'invalid_input')
+      assert.equal(badGradeBody.error.field, 'gradeId')
+
+      const unknown = await fetch(`${browseBaseUrl}${browsePacksPath(99999, 99999)}`)
+      assert.equal(unknown.status, 200)
+      assert.deepEqual(await unknown.json(), [])
+    })
+
+    it('lists live items only', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-items`
+      const live = await createItemRow(cookie, `Live item ${suffix}`, 'Available', 9320)
+      const archived = await createItemRow(cookie, `Archived item ${suffix}`, 'Hidden', 100)
+      const archive = await fetch(`${browseBaseUrl}/api/admin/items/${archived.id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(archive.status, 200)
+
+      const response = await fetch(`${browseBaseUrl}${browseItemsPath()}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as BrowseItem[]
+      const found = body.find((row) => row.id === live.id)
+      assert.ok(found)
+      assert.equal(found.title, live.title)
+      assert.equal(found.description, 'Available')
+      assert.equal(found.price, 9320)
+      assert.deepEqual(Object.keys(found).sort(), ['description', 'id', 'price', 'title'])
+      assert.equal(
+        body.some((row) => row.id === archived.id),
+        false,
+      )
+    })
+
+    it('returns the same browse bodies for anonymous and parent cookies', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-auth`
+      const school = await createNamed(cookie, 'schools', `Auth school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Auth grade ${suffix}`)
+      const book = await createBookRow(cookie, `Auth book ${suffix}`, 3000)
+      await createPackRow(cookie, `Auth pack ${suffix}`, school.id, grade.id, 'Auth', [book.id])
+      await createItemRow(cookie, `Auth item ${suffix}`, 'Auth item', 400)
+
+      const paths = [
+        browseSchoolsPath(),
+        browseGradesPath(school.id),
+        browsePacksPath(school.id, grade.id),
+        browseItemsPath(),
+      ]
+      for (const pathSuffix of paths) {
+        const anonymous = await fetch(`${browseBaseUrl}${pathSuffix}`)
+        const asParent = await fetch(`${browseBaseUrl}${pathSuffix}`, {
+          headers: { cookie: parentCookie },
+        })
+        assert.equal(anonymous.status, 200)
+        assert.equal(asParent.status, 200)
+        assert.deepEqual(await anonymous.json(), await asParent.json())
+      }
+    })
+
+    it('keeps admin pack list gated without a cookie', async () => {
+      const response = await fetch(`${browseBaseUrl}/api/admin/packs`)
+      assert.equal(response.status, 401)
+      const body = (await response.json()) as { error: { code: string } }
+      assert.equal(body.error.code, 'unauthenticated')
+    })
+
+    it('maps browse helpers and keeps the storefront free of cart and admin calls', async () => {
+      assert.equal(browseSchoolsPath(), '/api/browse/schools')
+      assert.equal(browseGradesPath(4), '/api/browse/grades?schoolId=4')
+      assert.equal(browsePacksPath(4, 7), '/api/browse/packs?schoolId=4&gradeId=7')
+      assert.equal(browseItemsPath(), '/api/browse/items')
+
+      const browsePage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'BrowsePage.tsx'),
+        'utf8',
+      )
+      const itemsPage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'ItemsPage.tsx'),
+        'utf8',
+      )
+      const shell = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'Shell.tsx'),
+        'utf8',
+      )
+      const storefrontApp = await readFile(storefrontAppPath, 'utf8')
+      const http = await readFile(path.join(serverRoot, 'catalog', 'http.ts'), 'utf8')
+      const packsModule = await readFile(path.join(serverRoot, 'catalog', 'packs.ts'), 'utf8')
+      const itemsModule = await readFile(path.join(serverRoot, 'catalog', 'items.ts'), 'utf8')
+
+      assert.match(storefrontApp, /import \{ BrowsePage \} from '\.\/BrowsePage'/)
+      assert.match(storefrontApp, /import \{ ItemsPage \} from '\.\/ItemsPage'/)
+      assert.match(storefrontApp, /element=\{<BrowsePage \/>\}/)
+      assert.match(storefrontApp, /path="items" element=\{<ItemsPage \/>\}/)
+      assert.match(browsePage, /Browse/)
+      assert.match(browsePage, /we are working on this now/)
+      assert.match(browsePage, /formatRupees\(pack\.price\)/)
+      assert.match(browsePage, /to="\/items"/)
+      assert.match(browsePage, />Items</)
+      assert.doesNotMatch(browsePage, /Add/)
+      assert.doesNotMatch(browsePage, /\/api\/admin\//)
+      assert.doesNotMatch(browsePage, /to=\{`?\/packs/)
+      assert.match(itemsPage, /we are working on this now/)
+      assert.match(itemsPage, /formatRupees\(item\.price\)/)
+      assert.match(itemsPage, /to="\/"/)
+      assert.match(itemsPage, />Packs</)
+      assert.doesNotMatch(itemsPage, /Add/)
+      assert.doesNotMatch(itemsPage, /\/api\/admin\//)
+      assert.match(shell, /pathname === '\/items'/)
+      assert.equal((shell.match(/label: 'Browse'/g) ?? []).length, 1)
+      assert.match(http, /mountBrowse/)
+      const browseStart = http.indexOf('function mountBrowse')
+      const browseEnd = http.indexOf('export function createCatalogRouter')
+      assert.ok(browseStart >= 0 && browseEnd > browseStart)
+      const browseBlock = http.slice(browseStart, browseEnd)
+      assert.doesNotMatch(browseBlock, /lookupSession/)
+      assert.doesNotMatch(http, /db\.prepare/)
+      assert.match(packsModule, /listBrowseSchools/)
+      assert.match(packsModule, /listBrowseGrades/)
+      assert.match(packsModule, /listBrowsePacks/)
+      assert.match(packsModule, /toStorefrontPack/)
+      assert.match(itemsModule, /listBrowseItems/)
+      assert.match(itemsModule, /listItems/)
     })
   })
 })

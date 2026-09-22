@@ -1,6 +1,8 @@
 import { createBrowserRouter, createRoutesFromElements, Route } from 'react-router'
 import { AccountPage } from './AccountPage'
 import { AuthGate } from './AuthGate'
+import { BrowsePage } from './BrowsePage'
+import { ItemsPage } from './ItemsPage'
 import { Shell } from './Shell'
 
 function Page({ title }: { title: string }) {
@@ -20,7 +22,8 @@ export const router = createBrowserRouter(
   createRoutesFromElements(
     <>
       <Route element={<Shell />}>
-        <Route index element={<Page title="Browse" />} />
+        <Route index element={<BrowsePage />} />
+        <Route path="items" element={<ItemsPage />} />
         <Route element={<AuthGate />}>
           <Route path="cart" element={<Page title="Cart" />} />
           <Route path="orders" element={<Page title="Orders" />} />
