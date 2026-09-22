@@ -352,7 +352,7 @@ summary,
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: 0 0 calc(var(--space-cta-h) + var(--space-4));
+  margin: 0 0 calc(var(--space-cta-h) * 2 + var(--space-6));
   padding: 0;
   list-style: none;
 }
@@ -527,6 +527,7 @@ summary,
   bottom: calc(var(--space-tabbar-h) + env(safe-area-inset-bottom, 0px));
   z-index: 9;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-margin-mobile);
@@ -551,6 +552,79 @@ summary,
 
 .pack-summary-lines {
   display: none;
+}
+
+.pack-add {
+  flex: 1 0 100%;
+  margin-top: var(--space-2);
+}
+
+.pack-add-error {
+  flex: 1 0 100%;
+  margin: var(--space-2) 0 0;
+  color: var(--color-danger);
+}
+
+.pack-auth {
+  margin-top: var(--space-6);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  margin-left: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-primary);
+  color: var(--color-text-on-accent);
+  font-family: var(--font-sans);
+  font-size: var(--text-label-caps-size);
+  font-weight: var(--text-label-caps-weight);
+  line-height: 1;
+}
+
+.tabbar-item .nav-badge {
+  margin-left: 0;
+  margin-top: 2px;
+}
+
+.cart-line-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cart-line {
+  margin: 0;
+}
+
+.cart-line-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-touch-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-strong-size);
+  font-weight: var(--text-body-strong-weight);
+  line-height: var(--text-body-strong-line);
+}
+
+.cart-line-chip.is-first {
+  background: var(--color-text-primary);
+  color: var(--color-accent-primary);
+}
+
+.cart-line-chip.is-later {
+  background: var(--color-accent-primary);
+  color: var(--color-focus-ring);
+  border: var(--space-edge-strong) solid var(--color-border-strong);
 }
 
 @media (min-width: 760px) {
@@ -630,6 +704,16 @@ summary,
 
   .pack-summary-line-amount {
     color: var(--color-text-primary-dark);
+  }
+
+  .pack-add {
+    flex: 0 0 auto;
+    width: 100%;
+    margin-top: var(--space-4);
+  }
+
+  .pack-list {
+    margin-bottom: 0;
   }
 }
 

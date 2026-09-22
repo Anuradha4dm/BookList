@@ -325,12 +325,50 @@ function RegisterPanel({ draft, update, onSignedIn }: PanelProps) {
   )
 }
 
+type AuthSurfaceProps = {
+  onSignedIn: () => void
+  headingNote?: string
+  titleAs?: 'h1' | 'h2'
+}
+
+/** Log in / Create account with a caller-supplied destination after success. */
+export function AuthSurface({ onSignedIn, headingNote, titleAs = 'h2' }: AuthSurfaceProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [draft, setDraft] = useState<RegisterInput>(EMPTY_DRAFT)
+  const Title = titleAs
+
+  const update: UpdateDraft = (field) => (value) =>
+    setDraft((previous) => ({ ...previous, [field]: value }))
+
+  return (
+    <div className="auth-gate-panel">
+      <div className="auth-gate-intro" role="status">
+        <Title className="page-heading text-heading-lg">
+          {mode === 'login' ? 'Log in' : 'Create account'}
+        </Title>
+        {headingNote ? <p className="auth-gate-note text-meta">{headingNote}</p> : null}
+      </div>
+      {mode === 'login' ? (
+        <LoginPanel draft={draft} update={update} onSignedIn={onSignedIn} />
+      ) : (
+        <RegisterPanel draft={draft} update={update} onSignedIn={onSignedIn} />
+      )}
+      <div className="auth-gate-switch">
+        <button
+          className="button-secondary press-travel"
+          type="button"
+          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+        >
+          {mode === 'login' ? 'Create account' : 'Log in'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function AuthGate() {
   const session = useSession()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  // One draft behind both panels, so switching between them keeps every typed value.
-  const [draft, setDraft] = useState<RegisterInput>(EMPTY_DRAFT)
 
   if (session.status === 'checking') {
     return <Skeleton />
@@ -340,9 +378,6 @@ export function AuthGate() {
     return <Outlet />
   }
 
-  const update: UpdateDraft = (field) => (value) =>
-    setDraft((previous) => ({ ...previous, [field]: value }))
-
   // Every gated tab lands on Browse once the parent is in — never the tab they tapped.
   function onSignedIn(): void {
     void navigate('/', { replace: true })
@@ -350,30 +385,11 @@ export function AuthGate() {
 
   return (
     <div className="auth-gate">
-      <div className="auth-gate-panel">
-        <div className="auth-gate-intro" role="status">
-          <h1 className="page-heading text-heading-lg">
-            {mode === 'login' ? 'Log in' : 'Create account'}
-          </h1>
-          <p className="auth-gate-note text-meta">
-            Log in or create an account to use your cart, orders, and account.
-          </p>
-        </div>
-        {mode === 'login' ? (
-          <LoginPanel draft={draft} update={update} onSignedIn={onSignedIn} />
-        ) : (
-          <RegisterPanel draft={draft} update={update} onSignedIn={onSignedIn} />
-        )}
-        <div className="auth-gate-switch">
-          <button
-            className="button-secondary press-travel"
-            type="button"
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-          >
-            {mode === 'login' ? 'Create account' : 'Log in'}
-          </button>
-        </div>
-      </div>
+      <AuthSurface
+        titleAs="h1"
+        onSignedIn={onSignedIn}
+        headingNote="Log in or create an account to use your cart, orders, and account."
+      />
     </div>
   )
 }

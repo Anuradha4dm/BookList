@@ -212,11 +212,14 @@ const SELECTION_MEMBER_MESSAGE = 'That book is not available.'
 
 const SELECTION_PAIR = /^([1-9]\d*):(\d+)$/
 
-/** A pack only the storefront may see: live pack, live school, live grade, live members. */
-export function getBrowsePack(db: Database.Database, id: number): PackRow | undefined {
-  const row = db
+type BrowsePackSqlRow = PackSqlRow & { grade_name: string }
+
+/** Same live joins as the storefront detail; grade name stays off the browse JSON. */
+function loadBrowsePackRow(db: Database.Database, id: number): BrowsePackSqlRow | undefined {
+  return db
     .prepare(
-      `SELECT packs.id, packs.name, packs.school_id, packs.grade_id, packs.description, packs.archived_at
+      `SELECT packs.id, packs.name, packs.school_id, packs.grade_id, packs.description, packs.archived_at,
+              grades.name AS grade_name
        FROM packs
        JOIN schools ON schools.id = packs.school_id
        JOIN grades ON grades.id = packs.grade_id
@@ -225,9 +228,19 @@ export function getBrowsePack(db: Database.Database, id: number): PackRow | unde
          AND schools.archived_at IS NULL
          AND grades.archived_at IS NULL`,
     )
-    .get(id) as PackSqlRow | undefined
+    .get(id) as BrowsePackSqlRow | undefined
+}
+
+/** A pack only the storefront may see: live pack, live school, live grade, live members. */
+export function getBrowsePack(db: Database.Database, id: number): PackRow | undefined {
+  const row = loadBrowsePackRow(db, id)
   if (!row) return undefined
   return toStorefrontPack(toPack(row, booksForPack(db, row.id)))
+}
+
+/** Live grade name for an addable pack; undefined when the pack is not on the list. */
+export function getBrowsePackGradeName(db: Database.Database, id: number): string | undefined {
+  return loadBrowsePackRow(db, id)?.grade_name
 }
 
 /** `bookId:qty` pairs, comma separated. Nothing is coerced; a bad shape is refused. */

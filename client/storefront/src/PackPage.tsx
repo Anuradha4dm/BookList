@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { Spinner, formatRupees } from '@booklist/ui'
+import { AuthSurface } from './AuthGate'
+import { useSession } from './auth'
 import { browsePackPath, type BrowsePackDetail } from './browse'
+import { useCartBadge } from './cart'
 import {
   configuredLines,
   decreaseChoice,
@@ -9,6 +12,7 @@ import {
   initialChoices,
   lockedBookId,
   runningTotal,
+  selectionFromChoices,
   toggleChoice,
   QUANTITY_MAX,
   QUANTITY_MIN,
@@ -22,6 +26,10 @@ const CAP_COPY = 'Item count exeeded, you can only order 20 per item'
 
 type Status = 'loading' | 'ready' | 'missing' | 'unreachable'
 
+type ApiError = {
+  error?: { code?: string; message?: string }
+}
+
 function packIdFrom(param: string): number | undefined {
   if (!/^[1-9]\d*$/.test(param)) return undefined
   const id = Number(param)
@@ -30,9 +38,17 @@ function packIdFrom(param: string): number | undefined {
 
 export function PackPage() {
   const packId = packIdFrom(useParams().id ?? '')
+  const session = useSession()
+  const { refresh: refreshCartBadge } = useCartBadge()
   const [detail, setDetail] = useState<BrowsePackDetail | null>(null)
   const [choices, setChoices] = useState<Choices>({})
   const [status, setStatus] = useState<Status>('loading')
+  const [needsAuth, setNeedsAuth] = useState(false)
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
+  const packIdRef = useRef(packId)
+  packIdRef.current = packId
 
   useEffect(() => {
     if (packId === undefined) {
@@ -43,6 +59,10 @@ export function PackPage() {
     const controller = new AbortController()
     setDetail(null)
     setStatus('loading')
+    setNeedsAuth(false)
+    setAddError('')
+    addingRef.current = false
+    setAdding(false)
     void fetch(browsePackPath(packId), { credentials: 'include', signal: controller.signal })
       .then(async (response) => {
         if (response.status === 404) return null
@@ -71,6 +91,47 @@ export function PackPage() {
   const total = useMemo(() => runningTotal(lines), [lines])
   const locked = lockedBookId(lines)
 
+  async function addToCart(): Promise<void> {
+    if (packId === undefined || !detail) return
+    setAddError('')
+    if (session.status !== 'in') {
+      setNeedsAuth(true)
+      return
+    }
+    if (addingRef.current) return
+    addingRef.current = true
+    setAdding(true)
+    const requestedPackId = packId
+    try {
+      const response = await fetch('/api/cart/packs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          packId,
+          selection: selectionFromChoices(books, choices),
+        }),
+      })
+      if (packIdRef.current !== requestedPackId) return
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as ApiError | null
+        if (packIdRef.current !== requestedPackId) return
+        const message = body?.error?.message
+        setAddError(
+          typeof message === 'string' && message.trim() ? message : 'Could not add this pack.',
+        )
+        return
+      }
+      refreshCartBadge()
+    } catch {
+      if (packIdRef.current !== requestedPackId) return
+      setAddError(UNREACHABLE)
+    } finally {
+      addingRef.current = false
+      if (packIdRef.current === requestedPackId) setAdding(false)
+    }
+  }
+
   if (status === 'missing') return null
   if (status === 'unreachable') {
     return (
@@ -85,6 +146,14 @@ export function PackPage() {
 
   return (
     <section className="pack-screen">
+      {needsAuth && session.status !== 'in' ? (
+        <div className="pack-auth">
+          <AuthSurface
+            onSignedIn={() => setNeedsAuth(false)}
+            headingNote="Log in or create an account to add this pack. Your ticks stay on this screen."
+          />
+        </div>
+      ) : null}
       <h1 className="page-heading text-heading-lg">{detail.name}</h1>
       <p className="text-meta">{detail.description}</p>
       {books.length === 0 ? (
@@ -178,6 +247,19 @@ export function PackPage() {
                 </li>
               ))}
             </ul>
+            <button
+              type="button"
+              className="button-primary press-travel pack-add"
+              disabled={adding || lines.length === 0}
+              onClick={() => void addToCart()}
+            >
+              Add to cart
+            </button>
+            {addError ? (
+              <p className="form-error text-meta pack-add-error" role="alert">
+                {addError}
+              </p>
+            ) : null}
           </aside>
         </div>
       )}

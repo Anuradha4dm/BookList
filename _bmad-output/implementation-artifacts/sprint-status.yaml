@@ -68,8 +68,8 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Build a cart that survives the evening
-  epic-3: backlog
-  3-1-add-a-configured-pack-to-the-cart: backlog
+  epic-3: in-progress
+  3-1-add-a-configured-pack-to-the-cart: review
   3-2-add-individual-items-to-the-same-cart: backlog
   3-3-a-cart-that-persists-totals-and-can-be-emptied: backlog
   epic-3-retrospective: optional
