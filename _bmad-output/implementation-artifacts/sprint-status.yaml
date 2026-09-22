@@ -1,5 +1,5 @@
 # generated: 2026-09-09T16:59:33
-# last_updated: 2026-09-17
+# last_updated: 2026-09-18
 # project: BookList
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-09-09T16:59:33
-last_updated: 2026-09-17
+last_updated: 2026-09-18
 project: BookList
 project_key: NOKEY
 tracking_system: file-system
@@ -62,7 +62,7 @@ development_status:
   2-1-schools-and-grades: review
   2-2-book-master: review
   2-3-individual-items: backlog
-  2-4-packs-from-the-book-master: backlog
+  2-4-packs-from-the-book-master: review
   2-5-browse-packs-and-items-without-an-account: backlog
   2-6-configure-a-pack-ticks-quantities-and-live-totals: backlog
   epic-2-retrospective: optional

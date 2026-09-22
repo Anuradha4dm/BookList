@@ -2,6 +2,7 @@ import { createBrowserRouter, createRoutesFromElements, Route } from 'react-rout
 import { AdminGate } from './AdminGate'
 import { BooksPage } from './BooksPage'
 import { GradesPage } from './GradesPage'
+import { PacksPage } from './PacksPage'
 import { ParentsPage } from './ParentsPage'
 import { SchoolsPage } from './SchoolsPage'
 import { SettingsPage } from './SettingsPage'
@@ -28,7 +29,7 @@ export const router = createBrowserRouter(
         <Route path="schools" element={<SchoolsPage />} />
         <Route path="grades" element={<GradesPage />} />
         <Route path="books" element={<BooksPage />} />
-        <Route path="packs" element={<Page title="Packs" />} />
+        <Route path="packs" element={<PacksPage />} />
         <Route path="items" element={<Page title="Items" />} />
         <Route path="parents" element={<ParentsPage />} />
         <Route path="settings" element={<SettingsPage />} />
