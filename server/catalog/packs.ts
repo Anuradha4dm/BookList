@@ -94,6 +94,85 @@ export function toStorefrontPack(pack: PackRow): PackRow {
   return { ...pack, books, price: livePrice(books) }
 }
 
+export type BrowseNamed = {
+  id: number
+  name: string
+}
+
+export type BrowsePack = {
+  id: number
+  name: string
+  description: string
+  price: number
+}
+
+export function listBrowseSchools(db: Database.Database): BrowseNamed[] {
+  const rows = db
+    .prepare(
+      `SELECT schools.id, schools.name
+       FROM schools
+       WHERE schools.archived_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM packs
+           JOIN grades ON grades.id = packs.grade_id
+           WHERE packs.school_id = schools.id
+             AND packs.archived_at IS NULL
+             AND grades.archived_at IS NULL
+         )
+       ORDER BY schools.id`,
+    )
+    .all() as Array<{ id: number; name: string }>
+  return rows.map((row) => ({ id: row.id, name: row.name }))
+}
+
+export function listBrowseGrades(db: Database.Database, schoolId: number): BrowseNamed[] {
+  const rows = db
+    .prepare(
+      `SELECT grades.id, grades.name
+       FROM grades
+       WHERE grades.archived_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM packs
+           WHERE packs.grade_id = grades.id
+             AND packs.school_id = ?
+             AND packs.archived_at IS NULL
+         )
+       ORDER BY grades.id`,
+    )
+    .all(schoolId) as Array<{ id: number; name: string }>
+  return rows.map((row) => ({ id: row.id, name: row.name }))
+}
+
+export function listBrowsePacks(
+  db: Database.Database,
+  schoolId: number,
+  gradeId: number,
+): BrowsePack[] {
+  const rows = db
+    .prepare(
+      `SELECT packs.id, packs.name, packs.school_id, packs.grade_id, packs.description, packs.archived_at
+       FROM packs
+       JOIN schools ON schools.id = packs.school_id
+       JOIN grades ON grades.id = packs.grade_id
+       WHERE packs.school_id = ?
+         AND packs.grade_id = ?
+         AND packs.archived_at IS NULL
+         AND schools.archived_at IS NULL
+         AND grades.archived_at IS NULL
+       ORDER BY packs.id`,
+    )
+    .all(schoolId, gradeId) as PackSqlRow[]
+  return rows.map((row) => {
+    const pack = toStorefrontPack(toPack(row, booksForPack(db, row.id)))
+    return {
+      id: pack.id,
+      name: pack.name,
+      description: pack.description,
+      price: pack.price,
+    }
+  })
+}
+
 export function getPack(db: Database.Database, id: number): PackRow | undefined {
   const row = db
     .prepare(

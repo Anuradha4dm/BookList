@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode, type SVGProps } from 'react'
-import { NavLink, Outlet, useNavigation } from 'react-router'
+import { NavLink, Outlet, useLocation, useNavigation } from 'react-router'
 import { BrandLockup, Skeleton, Spinner } from '@booklist/ui'
 import { SessionProvider } from './auth'
 
@@ -15,8 +15,14 @@ function navClass(isActive: boolean, kind: 'nav' | 'tab'): string {
   return isActive ? `${base} is-active` : base
 }
 
+function browseActive(pathname: string, isActive: boolean, to: string): boolean {
+  if (to !== '/') return isActive
+  return isActive || pathname === '/items'
+}
+
 export function Shell() {
   const navigation = useNavigation()
+  const location = useLocation()
   const [cold, setCold] = useState(true)
 
   useEffect(() => {
@@ -43,7 +49,9 @@ export function Shell() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
-                className={({ isActive }) => navClass(isActive, 'nav')}
+                className={({ isActive }) =>
+                  navClass(browseActive(location.pathname, isActive, item.to), 'nav')
+                }
               >
                 {item.label}
               </NavLink>
@@ -61,7 +69,9 @@ export function Shell() {
               key={item.to}
               to={item.to}
               end={item.end}
-              className={({ isActive }) => navClass(isActive, 'tab')}
+              className={({ isActive }) =>
+                navClass(browseActive(location.pathname, isActive, item.to), 'tab')
+              }
             >
               <item.icon />
               {item.label}

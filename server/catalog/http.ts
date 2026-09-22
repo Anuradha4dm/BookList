@@ -24,8 +24,16 @@ import {
   renameNamed,
   type NamedKind,
 } from './named.js'
-import { archiveItem, createItem, listItems, updateItem } from './items.js'
-import { archivePack, createPack, listPacks, updatePack } from './packs.js'
+import { archiveItem, createItem, listBrowseItems, listItems, updateItem } from './items.js'
+import {
+  archivePack,
+  createPack,
+  listBrowseGrades,
+  listBrowsePacks,
+  listBrowseSchools,
+  listPacks,
+  updatePack,
+} from './packs.js'
 import {
   validateBookIds,
   validateDescription,
@@ -551,8 +559,58 @@ function mountItems(router: Router, db: Database.Database, env: IdentityEnv): vo
   )
 }
 
+function mountBrowse(router: Router, db: Database.Database): void {
+  router.get(
+    '/browse/schools',
+    safe((_req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      res.status(200).json(listBrowseSchools(db))
+    }),
+  )
+
+  router.get(
+    '/browse/grades',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const schoolId = parseId(typeof req.query.schoolId === 'string' ? req.query.schoolId : undefined)
+      if (schoolId === undefined) {
+        sendError(res, 400, 'invalid_input', 'Choose a school.', 'schoolId')
+        return
+      }
+      res.status(200).json(listBrowseGrades(db, schoolId))
+    }),
+  )
+
+  router.get(
+    '/browse/packs',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const schoolId = parseId(typeof req.query.schoolId === 'string' ? req.query.schoolId : undefined)
+      if (schoolId === undefined) {
+        sendError(res, 400, 'invalid_input', 'Choose a school.', 'schoolId')
+        return
+      }
+      const gradeId = parseId(typeof req.query.gradeId === 'string' ? req.query.gradeId : undefined)
+      if (gradeId === undefined) {
+        sendError(res, 400, 'invalid_input', 'Choose a grade.', 'gradeId')
+        return
+      }
+      res.status(200).json(listBrowsePacks(db, schoolId, gradeId))
+    }),
+  )
+
+  router.get(
+    '/browse/items',
+    safe((_req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      res.status(200).json(listBrowseItems(db))
+    }),
+  )
+}
+
 export function createCatalogRouter(db: Database.Database, env: IdentityEnv): Router {
   const router = Router()
+  mountBrowse(router, db)
   mountNamedResource(router, db, env, 'school')
   mountNamedResource(router, db, env, 'grade')
   mountBooks(router, db, env)

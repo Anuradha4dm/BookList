@@ -33,6 +33,27 @@ export function listItems(db: Database.Database): ItemRow[] {
   return rows.map(toJson)
 }
 
+export type BrowseItem = {
+  id: number
+  title: string
+  description: string
+  price: number
+}
+
+export function listBrowseItems(db: Database.Database): BrowseItem[] {
+  const rows = db
+    .prepare(
+      'SELECT id, title, description, price FROM items WHERE archived_at IS NULL ORDER BY id',
+    )
+    .all() as Array<{ id: number; title: string; description: string; price: number }>
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    price: row.price,
+  }))
+}
+
 export function getItem(db: Database.Database, id: number): ItemRow | undefined {
   const row = db
     .prepare('SELECT id, title, description, price, archived_at FROM items WHERE id = ?')
