@@ -64,7 +64,7 @@ development_status:
   2-3-individual-items: review
   2-4-packs-from-the-book-master: review
   2-5-browse-packs-and-items-without-an-account: review
-  2-6-configure-a-pack-ticks-quantities-and-live-totals: backlog
+  2-6-configure-a-pack-ticks-quantities-and-live-totals: review
   epic-2-retrospective: optional
 
   # Epic 3: Build a cart that survives the evening

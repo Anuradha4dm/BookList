@@ -5,6 +5,7 @@ import {
   browseGradesPath,
   browsePacksPath,
   browseSchoolsPath,
+  packRoutePath,
   type BrowseNamed,
   type BrowsePack,
 } from './browse'
@@ -171,9 +172,11 @@ export function BrowsePage() {
             <ul className="catalog-list">
               {packs.map((pack) => (
                 <li key={pack.id} className="catalog-row">
-                  <p className="catalog-row-name">{pack.name}</p>
-                  <p className="text-meta">{pack.description}</p>
-                  <p className="text-amount-row">{formatRupees(pack.price)}</p>
+                  <Link className="catalog-row-link" to={packRoutePath(pack.id)}>
+                    <span className="catalog-row-name">{pack.name}</span>
+                    <span className="text-meta">{pack.description}</span>
+                    <span className="text-amount-row">{formatRupees(pack.price)}</span>
+                  </Link>
                 </li>
               ))}
             </ul>

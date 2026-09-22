@@ -59,3 +59,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-4-packs-from-the-book-master.md`
   summary: `booksForPack` inner-joins `books`, so a hard-deleted book on an archived pack disappears from admin GET.
   evidence: `in_use` only blocks DELETE while a live pack references the book, so a book on an archived pack can be deleted and the join row is then omitted rather than shown as a missing member.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-configure-a-pack.md`
+  summary: No storefront fetch carries a timeout, so a request that hangs instead of failing leaves a spinner on screen indefinitely with no unreachable message and no retry.
+  evidence: Every storefront page uses a bare `fetch` with an `AbortController` wired only to unmount, so nothing ever aborts a stalled request. The architecture spine expects free-tier auto-sleep cold starts, which is exactly when a first request is slowest. Pre-existing across `BrowsePage`, `ItemsPage`, and `AccountPage`; the pack screen inherits it rather than introducing it.
