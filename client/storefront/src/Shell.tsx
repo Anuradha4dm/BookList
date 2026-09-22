@@ -15,9 +15,9 @@ function navClass(isActive: boolean, kind: 'nav' | 'tab'): string {
   return isActive ? `${base} is-active` : base
 }
 
-function browseActive(pathname: string, isActive: boolean, to: string): boolean {
+export function browseActive(pathname: string, isActive: boolean, to: string): boolean {
   if (to !== '/') return isActive
-  return isActive || pathname === '/items'
+  return isActive || pathname === '/items' || pathname.startsWith('/packs/')
 }
 
 export function Shell() {

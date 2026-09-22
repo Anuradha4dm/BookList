@@ -27,7 +27,9 @@ import {
 import { archiveItem, createItem, listBrowseItems, listItems, updateItem } from './items.js'
 import {
   archivePack,
+  configureBrowsePack,
   createPack,
+  getBrowsePack,
   listBrowseGrades,
   listBrowsePacks,
   listBrowseSchools,
@@ -596,6 +598,25 @@ function mountBrowse(router: Router, db: Database.Database): void {
         return
       }
       res.status(200).json(listBrowsePacks(db, schoolId, gradeId))
+    }),
+  )
+
+  router.get(
+    '/browse/packs/:id',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const id = parseId(req.params.id)
+      const pack = id === undefined ? undefined : getBrowsePack(db, id)
+      if (!pack) {
+        sendError(res, 404, 'not_found', 'That pack is not on the list.')
+        return
+      }
+      const configured = configureBrowsePack(pack, req.query.selection)
+      if (!configured.ok) {
+        sendError(res, 400, 'invalid_input', configured.error.message, configured.error.field)
+        return
+      }
+      res.status(200).json(configured.value)
     }),
   )
 

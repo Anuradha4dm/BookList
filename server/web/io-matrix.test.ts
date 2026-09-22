@@ -36,9 +36,21 @@ import {
 import {
   browseGradesPath,
   browseItemsPath,
+  browsePackPath,
   browsePacksPath,
   browseSchoolsPath,
+  packRoutePath,
 } from '../../client/storefront/src/browse.ts'
+import {
+  configuredLines,
+  decreaseChoice,
+  increaseChoice,
+  initialChoices,
+  lockedBookId,
+  runningTotal,
+  toggleChoice,
+} from '../../client/storefront/src/packConfig.ts'
+import { browseActive } from '../../client/storefront/src/Shell.tsx'
 import { formatRupees } from '../../client/ui/money.ts'
 import { toStorefrontPack } from '../catalog/packs.ts'
 
@@ -85,6 +97,15 @@ function cssCustomProperty(source: string, name: string, scope: 'root' | 'dark')
   const match = block.match(new RegExp(`--${name}:\\s*([^;]+);`))
   assert.ok(match, `missing --${name} in ${scope}`)
   return match[1].trim()
+}
+
+/** The declarations of one rule, so a token assertion cannot drift into a neighbouring rule. */
+function cssRule(source: string, selector: string, occurrence = 0): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const matches = [...source.matchAll(new RegExp(`(?:^|\\n)[ \\t]*${escaped}\\s*\\{([^}]*)\\}`, 'g'))]
+  const match = matches[occurrence]
+  assert.ok(match, `missing rule ${selector} #${occurrence}`)
+  return match[1] ?? ''
 }
 
 async function waitForListening(
@@ -136,6 +157,8 @@ const ITEMS_PORT = String(18776)
 const itemsBaseUrl = `http://127.0.0.1:${ITEMS_PORT}`
 const BROWSE_PORT = String(18777)
 const browseBaseUrl = `http://127.0.0.1:${BROWSE_PORT}`
+const PACK_PORT = String(18778)
+const packBaseUrl = `http://127.0.0.1:${PACK_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -5365,6 +5388,569 @@ describe('I/O & edge-case matrix', () => {
       assert.match(packsModule, /toStorefrontPack/)
       assert.match(itemsModule, /listBrowseItems/)
       assert.match(itemsModule, /listItems/)
+    })
+  })
+
+  describe('Configure a pack', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.pack@example.com',
+      password: 'evening-order',
+    }
+
+    type NamedJson = { id: number; name: string; archivedAt: string | null }
+    type BookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackJson = { id: number; name: string; description: string; archivedAt: string | null }
+    type DetailBook = { id: number; title: string; price: number }
+    type DetailLine = {
+      bookId: number
+      title: string
+      unitPrice: number
+      quantity: number
+      lineTotal: number
+    }
+    type PackDetail = {
+      id: number
+      name: string
+      description: string
+      books: DetailBook[]
+      lines: DetailLine[]
+      total: number
+    }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${packBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function createNamed(
+      cookie: string,
+      resourcePath: 'schools' | 'grades',
+      name: string,
+    ): Promise<NamedJson> {
+      const response = await fetch(`${packBaseUrl}/api/admin/${resourcePath}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody(name)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as NamedJson
+    }
+
+    async function createBookRow(cookie: string, title: string, price: number): Promise<BookJson> {
+      const response = await fetch(`${packBaseUrl}/api/admin/books`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(title, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as BookJson
+    }
+
+    async function createPackRow(
+      cookie: string,
+      name: string,
+      schoolId: number,
+      gradeId: number,
+      description: string,
+      bookIds: number[],
+    ): Promise<PackJson> {
+      const response = await fetch(`${packBaseUrl}/api/admin/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(packCreateBody(name, schoolId, gradeId, description, bookIds)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as PackJson
+    }
+
+    async function archiveRow(
+      cookie: string,
+      resourcePath: 'schools' | 'grades' | 'books' | 'packs',
+      id: number,
+    ): Promise<void> {
+      const response = await fetch(`${packBaseUrl}/api/admin/${resourcePath}/${id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 200)
+    }
+
+    async function seedPack(
+      cookie: string,
+      suffix: string,
+      prices: number[],
+    ): Promise<{ school: NamedJson; grade: NamedJson; books: BookJson[]; pack: PackJson }> {
+      const school = await createNamed(cookie, 'schools', `Pack school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', `Pack grade ${suffix}`)
+      const books: BookJson[] = []
+      for (let index = 0; index < prices.length; index += 1) {
+        books.push(await createBookRow(cookie, `Book ${index + 1} ${suffix}`, prices[index]))
+      }
+      const pack = await createPackRow(
+        cookie,
+        `Pack ${suffix}`,
+        school.id,
+        grade.id,
+        `Pack ${suffix} description`,
+        books.map((book) => book.id),
+      )
+      return { school, grade, books, pack }
+    }
+
+    function expectedLine(book: BookJson, quantity: number): DetailLine {
+      return {
+        bookId: book.id,
+        title: book.title,
+        unitPrice: book.price,
+        quantity,
+        lineTotal: book.price * quantity,
+      }
+    }
+
+    async function errorFor(url: string): Promise<ErrorBody['error']> {
+      const response = await fetch(url)
+      assert.equal(response.status, 400)
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, 'invalid_input')
+      return body.error
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-pack-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, PACK_PORT)
+      child = started.child
+      const registered = await fetch(`${packBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('ticks every live member at quantity 1 and sums the total', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-default`
+      const { books, pack } = await seedPack(cookie, suffix, [2250, 900, 1200])
+
+      const response = await fetch(`${packBaseUrl}${browsePackPath(pack.id)}`)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as PackDetail
+      assert.deepEqual(
+        Object.keys(body).sort(),
+        ['books', 'description', 'id', 'lines', 'name', 'total'],
+      )
+      assert.equal(body.id, pack.id)
+      assert.equal(body.name, pack.name)
+      assert.equal(body.description, `Pack ${suffix} description`)
+      assert.deepEqual(
+        body.books,
+        books.map((book) => ({ id: book.id, title: book.title, price: book.price })),
+      )
+      assert.deepEqual(
+        body.lines,
+        books.map((book) => expectedLine(book, 1)),
+      )
+      assert.equal(body.total, 4350)
+      assert.equal(formatRupees(body.total), 'Rs. 4,350')
+    })
+
+    it('drops an archived member from books, lines, and the total', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-archived-member`
+      const { books, pack } = await seedPack(cookie, suffix, [5000, 4320])
+      await archiveRow(cookie, 'books', books[1].id)
+
+      const response = await fetch(`${packBaseUrl}${browsePackPath(pack.id)}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as PackDetail
+      assert.deepEqual(body.books, [
+        { id: books[0].id, title: books[0].title, price: books[0].price },
+      ])
+      assert.deepEqual(body.lines, [expectedLine(books[0], 1)])
+      assert.equal(body.total, 5000)
+    })
+
+    it('prices a selection and still lists every live member', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-selection`
+      const { books, pack } = await seedPack(cookie, suffix, [2250, 900, 1200])
+      const selection = `${books[0].id}:2,${books[2].id}:1`
+
+      const response = await fetch(`${packBaseUrl}${browsePackPath(pack.id)}?selection=${selection}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as PackDetail
+      assert.deepEqual(
+        body.books,
+        books.map((book) => ({ id: book.id, title: book.title, price: book.price })),
+      )
+      assert.deepEqual(body.lines, [expectedLine(books[0], 2), expectedLine(books[2], 1)])
+      assert.equal(body.total, 2250 * 2 + 1200)
+    })
+
+    it('refuses a quantity above the cap with the verbatim sentence', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-cap`
+      const { books, pack } = await seedPack(cookie, suffix, [2250])
+
+      const capped = await errorFor(
+        `${packBaseUrl}${browsePackPath(pack.id)}?selection=${books[0].id}:21`,
+      )
+      assert.equal(capped.field, 'quantity')
+      assert.equal(capped.message, 'Item count exeeded, you can only order 20 per item')
+
+      const atCap = await fetch(
+        `${packBaseUrl}${browsePackPath(pack.id)}?selection=${books[0].id}:20`,
+      )
+      assert.equal(atCap.status, 200)
+      const body = (await atCap.json()) as PackDetail
+      assert.deepEqual(body.lines, [expectedLine(books[0], 20)])
+      assert.equal(body.total, 45000)
+    })
+
+    it('refuses an empty selection with the locked-title sentence', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-empty-selection`
+      const { pack } = await seedPack(cookie, suffix, [2250, 900])
+
+      const error = await errorFor(`${packBaseUrl}${browsePackPath(pack.id)}?selection=`)
+      assert.equal(error.field, 'selection')
+      assert.equal(error.message, 'Keep at least one book to add this pack.')
+    })
+
+    it('refuses a below-range, malformed, duplicate, or non-member selection', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-invalid-selection`
+      const { books, pack, school, grade } = await seedPack(cookie, suffix, [2250, 900])
+      const archived = await createBookRow(cookie, `Archived member ${suffix}`, 400)
+      const withArchived = await createPackRow(
+        cookie,
+        `Pack with archived ${suffix}`,
+        school.id,
+        grade.id,
+        'Has an archived member',
+        [books[0].id, archived.id],
+      )
+      await archiveRow(cookie, 'books', archived.id)
+
+      const detailPath = `${packBaseUrl}${browsePackPath(pack.id)}`
+      const belowRange = await errorFor(`${detailPath}?selection=${books[0].id}:0`)
+      assert.equal(belowRange.field, 'quantity')
+
+      const malformed = await errorFor(`${detailPath}?selection=abc`)
+      assert.equal(malformed.field, 'selection')
+
+      const duplicate = await errorFor(
+        `${detailPath}?selection=${books[0].id}:1,${books[0].id}:2`,
+      )
+      assert.equal(duplicate.field, 'selection')
+
+      const notAMember = await errorFor(`${detailPath}?selection=999999:1`)
+      assert.equal(notAMember.field, 'selection')
+
+      const repeated = await errorFor(
+        `${detailPath}?selection=${books[0].id}:2&selection=${books[1].id}:1`,
+      )
+      assert.equal(repeated.field, 'selection')
+
+      const archivedMember = await errorFor(
+        `${packBaseUrl}${browsePackPath(withArchived.id)}?selection=${archived.id}:1`,
+      )
+      assert.equal(archivedMember.field, 'selection')
+    })
+
+    it('answers 404 for an unknown, archived, or non-integer pack', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-missing`
+      const archivedPack = await seedPack(cookie, `${suffix}-pack`, [1000])
+      await archiveRow(cookie, 'packs', archivedPack.pack.id)
+      const archivedSchool = await seedPack(cookie, `${suffix}-school`, [1000])
+      await archiveRow(cookie, 'schools', archivedSchool.school.id)
+      const archivedGrade = await seedPack(cookie, `${suffix}-grade`, [1000])
+      await archiveRow(cookie, 'grades', archivedGrade.grade.id)
+
+      const urls = [
+        `${packBaseUrl}${browsePackPath(99999)}`,
+        `${packBaseUrl}${browsePackPath(archivedPack.pack.id)}`,
+        `${packBaseUrl}${browsePackPath(archivedSchool.pack.id)}`,
+        `${packBaseUrl}${browsePackPath(archivedGrade.pack.id)}`,
+        `${packBaseUrl}/api/browse/packs/abc`,
+        `${packBaseUrl}/api/browse/packs/1.5`,
+      ]
+      for (const url of urls) {
+        const response = await fetch(url)
+        assert.equal(response.status, 404, url)
+        const body = (await response.json()) as ErrorBody
+        assert.equal(body.error.code, 'not_found')
+      }
+    })
+
+    it('returns an empty configuration when every member is archived', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-all-archived`
+      const { books, pack } = await seedPack(cookie, suffix, [1000, 2000])
+      for (const book of books) await archiveRow(cookie, 'books', book.id)
+
+      const response = await fetch(`${packBaseUrl}${browsePackPath(pack.id)}`)
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as PackDetail
+      assert.deepEqual(body.books, [])
+      assert.deepEqual(body.lines, [])
+      assert.equal(body.total, 0)
+    })
+
+    it('returns the same body for an anonymous and a parent cookie', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-auth`
+      const { books, pack } = await seedPack(cookie, suffix, [2250, 900])
+      const urls = [
+        `${packBaseUrl}${browsePackPath(pack.id)}`,
+        `${packBaseUrl}${browsePackPath(pack.id)}?selection=${books[1].id}:3`,
+      ]
+      for (const url of urls) {
+        const anonymous = await fetch(url)
+        const asParent = await fetch(url, { headers: { cookie: parentCookie } })
+        assert.equal(anonymous.status, 200)
+        assert.equal(asParent.status, 200)
+        assert.deepEqual(await anonymous.json(), await asParent.json())
+      }
+    })
+
+    it('keeps the admin pack catalog gated without a cookie', async () => {
+      const response = await fetch(`${packBaseUrl}/api/admin/packs`)
+      assert.equal(response.status, 401)
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, 'unauthenticated')
+    })
+
+    it('ticks every book at 1 on load and prices what the shopper configures', () => {
+      const books = [
+        { id: 3, title: 'Atlas', price: 2250 },
+        { id: 7, title: 'Maths', price: 900 },
+        { id: 9, title: 'Reader', price: 1200 },
+      ]
+      const detail = {
+        id: 4,
+        name: 'Grade 5',
+        description: 'Grade 5 pack',
+        books,
+        lines: books.map((book) => ({
+          bookId: book.id,
+          title: book.title,
+          unitPrice: book.price,
+          quantity: 1,
+          lineTotal: book.price,
+        })),
+        total: 4350,
+      }
+      const loaded = initialChoices(detail)
+      const linesOf = (choices: typeof loaded): Array<[number, number, number]> =>
+        configuredLines(books, choices).map((line) => [line.book.id, line.quantity, line.lineTotal])
+
+      assert.deepEqual(linesOf(loaded), [
+        [3, 1, 2250],
+        [7, 1, 900],
+        [9, 1, 1200],
+      ])
+      assert.equal(runningTotal(configuredLines(books, loaded)), 4350)
+
+      const unticked = toggleChoice(loaded, 7)
+      assert.deepEqual(linesOf(unticked), [
+        [3, 1, 2250],
+        [9, 1, 1200],
+      ])
+      assert.equal(runningTotal(configuredLines(books, unticked)), 3450)
+
+      const decremented = decreaseChoice(loaded, 3)
+      assert.deepEqual(linesOf(decremented), [
+        [7, 1, 900],
+        [9, 1, 1200],
+      ])
+      assert.equal(runningTotal(configuredLines(books, decremented)), 2100)
+
+      const onlyOne = toggleChoice(toggleChoice(loaded, 7), 9)
+      assert.deepEqual(linesOf(onlyOne), [[3, 1, 2250]])
+      assert.equal(lockedBookId(configuredLines(books, onlyOne)), 3)
+      assert.deepEqual(toggleChoice(onlyOne, 3), onlyOne)
+      assert.deepEqual(decreaseChoice(onlyOne, 3), onlyOne)
+
+      let capped = onlyOne
+      for (let press = 0; press < 25; press += 1) capped = increaseChoice(capped, 3)
+      assert.deepEqual(linesOf(capped), [[3, 20, 45000]])
+      assert.equal(runningTotal(configuredLines(books, capped)), 45000)
+
+      const stepped = increaseChoice(increaseChoice(loaded, 7), 7)
+      assert.deepEqual(linesOf(stepped), [
+        [3, 1, 2250],
+        [7, 3, 2700],
+        [9, 1, 1200],
+      ])
+      assert.equal(runningTotal(configuredLines(books, stepped)), 6150)
+      assert.equal(formatRupees(runningTotal(configuredLines(books, stepped))), 'Rs. 6,150')
+      assert.equal(lockedBookId(configuredLines(books, stepped)), undefined)
+    })
+
+    it('keeps Browse lit on the pack screen and nowhere it does not belong', () => {
+      assert.equal(browseActive('/', true, '/'), true)
+      assert.equal(browseActive('/items', false, '/'), true)
+      assert.equal(browseActive('/packs/5', false, '/'), true)
+      assert.equal(browseActive('/cart', false, '/'), false)
+      assert.equal(browseActive('/packs/5', false, '/cart'), false)
+      assert.equal(browseActive('/cart', true, '/cart'), true)
+    })
+
+    it('keeps the rules in the catalog module and the screen free of per-change fetches', async () => {
+      assert.equal(browsePackPath(4), '/api/browse/packs/4')
+      assert.equal(packRoutePath(4), '/packs/4')
+
+      const packPage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'PackPage.tsx'),
+        'utf8',
+      )
+      const browsePage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'BrowsePage.tsx'),
+        'utf8',
+      )
+      const shell = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'Shell.tsx'),
+        'utf8',
+      )
+      const storefrontApp = await readFile(storefrontAppPath, 'utf8')
+      const http = await readFile(path.join(serverRoot, 'catalog', 'http.ts'), 'utf8')
+      const packsModule = await readFile(path.join(serverRoot, 'catalog', 'packs.ts'), 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+      const tokens = await readFile(tokensPath, 'utf8')
+
+      assert.match(packPage, /browsePackPath\(/)
+      assert.equal((packPage.match(/fetch\(/g) ?? []).length, 1)
+      assert.doesNotMatch(packPage, /selection/)
+      assert.doesNotMatch(packPage, /Add/)
+      assert.doesNotMatch(packPage, /\/api\/admin\//)
+      assert.match(packPage, /Keep at least one book to add this pack\./)
+      assert.match(packPage, /Item count exeeded, you can only order 20 per item/)
+      assert.match(packPage, /we are working on this now/)
+      assert.match(packPage, /formatRupees\(/)
+      assert.match(packPage, /Number\.isSafeInteger/)
+      assert.match(packPage, /aria-live="polite"/)
+      assert.equal((packPage.match(/aria-describedby=/g) ?? []).length, 3)
+
+      assert.match(storefrontApp, /path="packs\/:id" element=\{<PackPage \/>\}/)
+      const gated = storefrontApp.match(/<Route element=\{<AuthGate \/>\}>([\s\S]*?)<\/Route>/)?.[1]
+      assert.ok(gated)
+      assert.doesNotMatch(gated, /packs/)
+      assert.equal((shell.match(/label: 'Browse'/g) ?? []).length, 1)
+      assert.match(browsePage, /packRoutePath\(pack\.id\)/)
+
+      const browseStart = http.indexOf('function mountBrowse')
+      const browseEnd = http.indexOf('export function createCatalogRouter')
+      assert.ok(browseStart >= 0 && browseEnd > browseStart)
+      const browseBlock = http.slice(browseStart, browseEnd)
+      assert.match(browseBlock, /'\/browse\/packs\/:id'/)
+      assert.doesNotMatch(browseBlock, /lookupSession/)
+      assert.doesNotMatch(http, /db\.prepare/)
+      assert.doesNotMatch(http, /Item count exeeded/)
+      assert.match(packsModule, /export function getBrowsePack/)
+      assert.match(packsModule, /export function configureBrowsePack/)
+      assert.match(packsModule, /Item count exeeded, you can only order 20 per item/)
+      assert.match(packsModule, /Keep at least one book to add this pack\./)
+
+      assert.equal(cssCustomProperty(tokens, 'space-pack-rail-w', 'root'), '288px')
+
+      const totalBar = cssRule(baseCss, '.pack-summary')
+      assert.match(totalBar, /position:\s*fixed/)
+      assert.match(
+        totalBar,
+        /bottom:\s*calc\(var\(--space-tabbar-h\)\s*\+\s*env\(safe-area-inset-bottom/,
+      )
+      assert.match(totalBar, /background:\s*var\(--color-text-primary\)/)
+      assert.match(totalBar, /color:\s*var\(--color-text-secondary-dark\)/)
+      assert.doesNotMatch(totalBar, /surface-sunken/)
+      assert.match(
+        cssRule(baseCss, "[data-theme='dark'] .pack-summary"),
+        /background:\s*var\(--color-surface-raised-dark\)/,
+      )
+      assert.match(
+        cssRule(baseCss, '.pack-summary-label'),
+        /color:\s*var\(--color-text-secondary-dark\)/,
+      )
+      assert.match(
+        cssRule(baseCss, '.pack-summary-total'),
+        /color:\s*var\(--color-text-primary-dark\)/,
+      )
+      assert.match(cssRule(baseCss, '.pack-summary', 1), /var\(--space-pack-rail-w\)/)
+      assert.match(
+        baseCss,
+        /@media \(min-width: 760px\)[\s\S]*\.pack-summary\s*\{[\s\S]*?var\(--space-pack-rail-w\)/,
+      )
+
+      const row = cssRule(baseCss, '.pack-row')
+      assert.match(row, /border-radius:\s*var\(--radius-md\)/)
+      assert.match(cssRule(baseCss, '.pack-row.is-off'), /dashed/)
+      assert.match(cssRule(baseCss, '.pack-row.is-off .pack-row-title'), /line-through/)
+      const lockedRow = cssRule(baseCss, '.pack-row.is-locked')
+      assert.match(lockedRow, /background:\s*var\(--color-accent-quiet\)/)
+      assert.match(lockedRow, /var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+
+      const checkbox = cssRule(baseCss, '.pack-check-box')
+      assert.match(checkbox, /appearance:\s*none/)
+      assert.match(checkbox, /background:\s*var\(--color-surface-base\)/)
+      assert.match(checkbox, /border:\s*var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+      assert.match(checkbox, /border-radius:\s*var\(--radius-sm\)/)
+      assert.doesNotMatch(checkbox, /accent-color/)
+      assert.match(
+        cssRule(baseCss, '.pack-check-box:checked'),
+        /background:\s*var\(--color-accent-primary\)/,
+      )
+      assert.match(cssRule(baseCss, '.pack-check-box::after'), /var\(--color-text-on-accent\)/)
+      assert.match(cssRule(baseCss, '.pack-check-box:disabled'), /opacity:\s*1/)
+
+      const notice = cssRule(baseCss, '.pack-row-notice')
+      assert.match(notice, /background:\s*var\(--color-surface-raised\)/)
+      assert.match(notice, /border:\s*var\(--space-edge-hairline\) solid var\(--color-border-strong\)/)
+      assert.match(notice, /border-radius:\s*var\(--radius-default\)/)
+      assert.doesNotMatch(notice, /warn-tint/)
+
+      const stepper = cssRule(baseCss, '.pack-stepper')
+      assert.match(stepper, /background:\s*var\(--color-surface-raised\)/)
+      assert.match(stepper, /border:\s*var\(--space-edge-hairline\) solid var\(--color-border-default\)/)
+      assert.doesNotMatch(stepper, /overflow:\s*hidden/)
+      const stepperEnd = cssRule(baseCss, '.pack-stepper-end')
+      assert.match(stepperEnd, /min-width:\s*var\(--space-touch-min\)/)
+      assert.match(stepperEnd, /min-height:\s*var\(--space-control-h\)/)
+      const stepperDisabled = cssRule(baseCss, '.pack-stepper-end:disabled')
+      assert.match(stepperDisabled, /background:\s*var\(--color-surface-sunken\)/)
+      assert.match(stepperDisabled, /color:\s*var\(--color-text-secondary\)/)
+      assert.match(stepperDisabled, /opacity:\s*1/)
+      assert.match(cssRule(baseCss, '.pack-stepper-end:focus-visible'), /z-index/)
+      assert.match(
+        cssRule(baseCss, '.pack-stepper-value'),
+        /background:\s*var\(--color-accent-quiet\)/,
+      )
     })
   })
 })

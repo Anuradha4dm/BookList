@@ -3,6 +3,7 @@ import { AccountPage } from './AccountPage'
 import { AuthGate } from './AuthGate'
 import { BrowsePage } from './BrowsePage'
 import { ItemsPage } from './ItemsPage'
+import { PackPage } from './PackPage'
 import { Shell } from './Shell'
 
 function Page({ title }: { title: string }) {
@@ -24,6 +25,7 @@ export const router = createBrowserRouter(
       <Route element={<Shell />}>
         <Route index element={<BrowsePage />} />
         <Route path="items" element={<ItemsPage />} />
+        <Route path="packs/:id" element={<PackPage />} />
         <Route element={<AuthGate />}>
           <Route path="cart" element={<Page title="Cart" />} />
           <Route path="orders" element={<Page title="Orders" />} />
