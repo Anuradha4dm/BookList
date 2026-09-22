@@ -24,6 +24,7 @@ import {
   renameNamed,
   type NamedKind,
 } from './named.js'
+import { archiveItem, createItem, listItems, updateItem } from './items.js'
 import { archivePack, createPack, listPacks, updatePack } from './packs.js'
 import {
   validateBookIds,
@@ -41,6 +42,9 @@ const BOOKS_FORBIDDEN_MESSAGE =
 
 const PACKS_FORBIDDEN_MESSAGE =
   'Only the shop owner can change the pack list. Sign in as the shop owner to continue.'
+
+const ITEMS_FORBIDDEN_MESSAGE =
+  'Only the shop owner can change the item list. Sign in as the shop owner to continue.'
 
 function sendError(
   res: Response,
@@ -462,11 +466,97 @@ function mountPacks(router: Router, db: Database.Database, env: IdentityEnv): vo
   )
 }
 
+function readItemFields(req: Request):
+  | { ok: true; title: string; description: string; price: number }
+  | { ok: false; message: string; field: string } {
+  const body = readBody(req)
+  if (typeof body.title !== 'string' || !body.title.trim()) {
+    return { ok: false, message: 'Enter an item title.', field: 'title' }
+  }
+  const title = body.title.trim()
+  const description = validateDescription(body.description)
+  if (!description.ok) {
+    return { ok: false, message: description.error.message, field: description.error.field }
+  }
+  const price = validatePrice(body.price)
+  if (!price.ok) return { ok: false, message: price.error.message, field: price.error.field }
+  return { ok: true, title, description: description.value, price: price.value }
+}
+
+function mountItems(router: Router, db: Database.Database, env: IdentityEnv): void {
+  const collection = '/admin/items'
+
+  router.get(
+    collection,
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      if (!requireAdmin(db, env, req, res, ITEMS_FORBIDDEN_MESSAGE)) return
+      res.status(200).json(listItems(db))
+    }),
+  )
+
+  router.post(
+    collection,
+    safe((req, res) => {
+      if (!requireAdmin(db, env, req, res, ITEMS_FORBIDDEN_MESSAGE)) return
+      const fields = readItemFields(req)
+      if (!fields.ok) {
+        sendError(res, 400, 'invalid_input', fields.message, fields.field)
+        return
+      }
+      const created = createItem(db, fields.title, fields.description, fields.price)
+      res.status(201).json(created)
+    }),
+  )
+
+  router.patch(
+    `${collection}/:id`,
+    safe((req, res) => {
+      if (!requireAdmin(db, env, req, res, ITEMS_FORBIDDEN_MESSAGE)) return
+      const id = parseId(req.params.id)
+      if (id === undefined) {
+        sendError(res, 404, 'not_found', 'That item is not on the list.')
+        return
+      }
+      const fields = readItemFields(req)
+      if (!fields.ok) {
+        sendError(res, 400, 'invalid_input', fields.message, fields.field)
+        return
+      }
+      const updated = updateItem(db, id, fields.title, fields.description, fields.price)
+      if (!updated) {
+        sendError(res, 404, 'not_found', 'That item is not on the list.')
+        return
+      }
+      res.status(200).json(updated)
+    }),
+  )
+
+  router.post(
+    `${collection}/:id/archive`,
+    safe((req, res) => {
+      if (!requireAdmin(db, env, req, res, ITEMS_FORBIDDEN_MESSAGE)) return
+      const id = parseId(req.params.id)
+      if (id === undefined) {
+        sendError(res, 404, 'not_found', 'That item is not on the list.')
+        return
+      }
+      const archived = archiveItem(db, id)
+      if (!archived) {
+        sendError(res, 404, 'not_found', 'That item is not on the list.')
+        return
+      }
+      res.status(200).json(archived)
+    }),
+  )
+}
+
 export function createCatalogRouter(db: Database.Database, env: IdentityEnv): Router {
   const router = Router()
   mountNamedResource(router, db, env, 'school')
   mountNamedResource(router, db, env, 'grade')
   mountBooks(router, db, env)
   mountPacks(router, db, env)
+  mountItems(router, db, env)
   return router
 }
