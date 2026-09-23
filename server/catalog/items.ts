@@ -61,6 +61,22 @@ export function getItem(db: Database.Database, id: number): ItemRow | undefined 
   return row ? toJson(row) : undefined
 }
 
+/** Live catalog row for cart clone — archived items are absent. */
+export type LiveItem = {
+  id: number
+  title: string
+  price: number
+}
+
+export function getLiveItem(db: Database.Database, id: number): LiveItem | undefined {
+  const row = db
+    .prepare(
+      'SELECT id, title, price FROM items WHERE id = ? AND archived_at IS NULL',
+    )
+    .get(id) as { id: number; title: string; price: number } | undefined
+  return row ?? undefined
+}
+
 export function createItem(
   db: Database.Database,
   title: string,
