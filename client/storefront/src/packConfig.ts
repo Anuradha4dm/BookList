@@ -71,3 +71,10 @@ export function runningTotal(lines: ConfiguredLine[]): number {
 export function lockedBookId(lines: ConfiguredLine[]): number | undefined {
   return lines.length === 1 ? lines[0].book.id : undefined
 }
+
+/** Ticked choices as `bookId:qty` pairs for the cart add body. */
+export function selectionFromChoices(books: BrowsePackBook[], choices: Choices): string {
+  return configuredLines(books, choices)
+    .map((line) => `${line.book.id}:${line.quantity}`)
+    .join(',')
+}

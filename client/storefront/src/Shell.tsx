@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode, type SVGProps } from 'react'
 import { NavLink, Outlet, useLocation, useNavigation } from 'react-router'
 import { BrandLockup, Skeleton, Spinner } from '@booklist/ui'
 import { SessionProvider } from './auth'
+import { CartBadgeProvider, useCartBadge } from './cart'
 
 const destinations = [
   { to: '/', label: 'Browse', icon: BrowseIcon, end: true },
@@ -20,9 +21,67 @@ export function browseActive(pathname: string, isActive: boolean, to: string): b
   return isActive || pathname === '/items' || pathname.startsWith('/packs/')
 }
 
+function DestinationLabel({ label, to }: { label: string; to: string }) {
+  const { count } = useCartBadge()
+  if (to !== '/cart' || count < 1) return <>{label}</>
+  return (
+    <>
+      {label}
+      <span className="nav-badge" aria-label={`${count} in cart`}>
+        {count}
+      </span>
+    </>
+  )
+}
+
+function ShellChrome({ body }: { body: ReactNode }) {
+  const location = useLocation()
+
+  return (
+    <div className="storefront-shell">
+      <header className="storefront-header">
+        <BrandLockup />
+        <nav className="storefront-topnav" aria-label="Storefront">
+          {destinations.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                navClass(browseActive(location.pathname, isActive, item.to), 'nav')
+              }
+            >
+              <DestinationLabel label={item.label} to={item.to} />
+            </NavLink>
+          ))}
+        </nav>
+      </header>
+      <main className="storefront-main">{body}</main>
+      <footer className="storefront-footer">
+        We store your name, delivery address, WhatsApp number, any second phone number you give
+        us, and your email so the shop can fulfil your order and reach you about it.
+      </footer>
+      <nav className="storefront-tabbar" aria-label="Storefront">
+        {destinations.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              navClass(browseActive(location.pathname, isActive, item.to), 'tab')
+            }
+          >
+            <item.icon />
+            <DestinationLabel label={item.label} to={item.to} />
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  )
+}
+
 export function Shell() {
   const navigation = useNavigation()
-  const location = useLocation()
   const [cold, setCold] = useState(true)
 
   useEffect(() => {
@@ -40,45 +99,9 @@ export function Shell() {
 
   return (
     <SessionProvider>
-      <div className="storefront-shell">
-        <header className="storefront-header">
-          <BrandLockup />
-          <nav className="storefront-topnav" aria-label="Storefront">
-            {destinations.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  navClass(browseActive(location.pathname, isActive, item.to), 'nav')
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        </header>
-        <main className="storefront-main">{body}</main>
-        <footer className="storefront-footer">
-          We store your name, delivery address, WhatsApp number, any second phone number you give
-          us, and your email so the shop can fulfil your order and reach you about it.
-        </footer>
-        <nav className="storefront-tabbar" aria-label="Storefront">
-          {destinations.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                navClass(browseActive(location.pathname, isActive, item.to), 'tab')
-              }
-            >
-              <item.icon />
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+      <CartBadgeProvider>
+        <ShellChrome body={body} />
+      </CartBadgeProvider>
     </SessionProvider>
   )
 }

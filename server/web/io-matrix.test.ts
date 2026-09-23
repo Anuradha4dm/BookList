@@ -48,6 +48,7 @@ import {
   initialChoices,
   lockedBookId,
   runningTotal,
+  selectionFromChoices,
   toggleChoice,
 } from '../../client/storefront/src/packConfig.ts'
 import { browseActive } from '../../client/storefront/src/Shell.tsx'
@@ -159,6 +160,8 @@ const BROWSE_PORT = String(18777)
 const browseBaseUrl = `http://127.0.0.1:${BROWSE_PORT}`
 const PACK_PORT = String(18778)
 const packBaseUrl = `http://127.0.0.1:${PACK_PORT}`
+const CART_PORT = String(18779)
+const cartBaseUrl = `http://127.0.0.1:${CART_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -313,7 +316,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 6)
+        assert.equal(applied.n, 7)
       } finally {
         db.close()
       }
@@ -2250,7 +2253,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 6)
+          assert.equal(applied.n, 7)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -5847,9 +5850,9 @@ describe('I/O & edge-case matrix', () => {
       const tokens = await readFile(tokensPath, 'utf8')
 
       assert.match(packPage, /browsePackPath\(/)
-      assert.equal((packPage.match(/fetch\(/g) ?? []).length, 1)
-      assert.doesNotMatch(packPage, /selection/)
-      assert.doesNotMatch(packPage, /Add/)
+      assert.equal((packPage.match(/fetch\(/g) ?? []).length, 2)
+      assert.match(packPage, /selection/)
+      assert.match(packPage, /Add to cart/)
       assert.doesNotMatch(packPage, /\/api\/admin\//)
       assert.match(packPage, /Keep at least one book to add this pack\./)
       assert.match(packPage, /Item count exeeded, you can only order 20 per item/)
@@ -5951,6 +5954,499 @@ describe('I/O & edge-case matrix', () => {
         cssRule(baseCss, '.pack-stepper-value'),
         /background:\s*var\(--color-accent-quiet\)/,
       )
+    })
+  })
+
+  describe('Add a configured pack to the cart', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let parentCookie: string
+    let parentBCookie: string
+
+    const parentReg = {
+      name: 'Nimali Perera',
+      deliveryAddress: '12 Temple Road, Nugegoda',
+      whatsapp: '0771234567',
+      email: 'nimali.cart@example.com',
+      password: 'evening-order',
+    }
+
+    const parentBReg = {
+      name: 'Kasun Silva',
+      deliveryAddress: '8 Lake Road, Kandy',
+      whatsapp: '0777654321',
+      email: 'kasun.cart@example.com',
+      password: 'evening-order',
+    }
+
+    type NamedJson = { id: number; name: string; archivedAt: string | null }
+    type BookJson = { id: number; title: string; price: number; archivedAt: string | null }
+    type PackJson = { id: number; name: string; description: string; archivedAt: string | null }
+    type CartLineJson = {
+      id: number
+      packId: number
+      sequence: number
+      gradeName: string
+      label: string
+    }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${cartBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function createNamed(
+      cookie: string,
+      resourcePath: 'schools' | 'grades',
+      name: string,
+    ): Promise<NamedJson> {
+      const response = await fetch(`${cartBaseUrl}/api/admin/${resourcePath}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(catalogNameBody(name)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as NamedJson
+    }
+
+    async function createBookRow(cookie: string, title: string, price: number): Promise<BookJson> {
+      const response = await fetch(`${cartBaseUrl}/api/admin/books`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(title, price)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as BookJson
+    }
+
+    async function createPackRow(
+      cookie: string,
+      name: string,
+      schoolId: number,
+      gradeId: number,
+      description: string,
+      bookIds: number[],
+    ): Promise<PackJson> {
+      const response = await fetch(`${cartBaseUrl}/api/admin/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(packCreateBody(name, schoolId, gradeId, description, bookIds)),
+      })
+      assert.equal(response.status, 201)
+      return (await response.json()) as PackJson
+    }
+
+    async function archiveRow(
+      cookie: string,
+      resourcePath: 'schools' | 'grades' | 'books' | 'packs',
+      id: number,
+    ): Promise<void> {
+      const response = await fetch(`${cartBaseUrl}/api/admin/${resourcePath}/${id}/archive`, {
+        method: 'POST',
+        headers: { cookie },
+      })
+      assert.equal(response.status, 200)
+    }
+
+    async function seedGrade5Pack(
+      cookie: string,
+      suffix: string,
+      prices: number[],
+    ): Promise<{ school: NamedJson; grade: NamedJson; books: BookJson[]; pack: PackJson }> {
+      const school = await createNamed(cookie, 'schools', `Cart school ${suffix}`)
+      const grade = await createNamed(cookie, 'grades', 'Grade 5')
+      const books: BookJson[] = []
+      for (let index = 0; index < prices.length; index += 1) {
+        books.push(await createBookRow(cookie, `Cart book ${index + 1} ${suffix}`, prices[index]))
+      }
+      const pack = await createPackRow(
+        cookie,
+        `Cart pack ${suffix}`,
+        school.id,
+        grade.id,
+        `Cart pack ${suffix} description`,
+        books.map((book) => book.id),
+      )
+      return { school, grade, books, pack }
+    }
+
+    async function addPack(
+      cookie: string | undefined,
+      packId: number,
+      selection: unknown,
+    ): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      return fetch(`${cartBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ packId, selection }),
+      })
+    }
+
+    async function listCart(cookie: string): Promise<{ status: number; lines: CartLineJson[] }> {
+      const response = await fetch(`${cartBaseUrl}/api/cart`, {
+        headers: { cookie },
+      })
+      if (response.status !== 200) return { status: response.status, lines: [] }
+      const body = (await response.json()) as { lines: CartLineJson[] }
+      return { status: response.status, lines: body.lines }
+    }
+
+    function membersInDb(lineId: number): Array<{
+      book_id: number
+      included: number
+      quantity: number
+      title: string
+      unit_price: number
+    }> {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return db
+          .prepare(
+            `SELECT book_id, included, quantity, title, unit_price
+             FROM cart_pack_line_members
+             WHERE line_id = ?
+             ORDER BY book_id`,
+          )
+          .all(lineId) as Array<{
+          book_id: number
+          included: number
+          quantity: number
+          title: string
+          unit_price: number
+        }>
+      } finally {
+        db.close()
+      }
+    }
+
+    function lineCountInDb(): number {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return (db.prepare('SELECT COUNT(*) AS n FROM cart_pack_lines').get() as { n: number }).n
+      } finally {
+        db.close()
+      }
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-cart-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, CART_PORT)
+      child = started.child
+      const registered = await fetch(`${cartBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentReg),
+      })
+      assert.equal(registered.status, 201)
+      const cookie = sidCookie(registered.headers)
+      assert.ok(cookie)
+      parentCookie = cookieHeader(cookie)
+
+      const registeredB = await fetch(`${cartBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parentBReg),
+      })
+      assert.equal(registeredB.status, 201)
+      const cookieB = sidCookie(registeredB.headers)
+      assert.ok(cookieB)
+      parentBCookie = cookieHeader(cookieB)
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('clones the first add with sequence 1 and every live member', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-first`
+      const { books, pack } = await seedGrade5Pack(cookie, suffix, [2250, 900, 1200])
+      const selection = `${books[0].id}:2,${books[2].id}:1`
+
+      const before = lineCountInDb()
+      const response = await addPack(parentCookie, pack.id, selection)
+      assert.equal(response.status, 201)
+      const body = (await response.json()) as CartLineJson
+      assert.equal(body.sequence, 1)
+      assert.equal(body.gradeName, 'Grade 5')
+      assert.equal(body.label, 'Pack 1 of Grade 5')
+      assert.equal(body.packId, pack.id)
+      assert.equal(lineCountInDb(), before + 1)
+
+      const members = membersInDb(body.id)
+      assert.equal(members.length, 3)
+      assert.deepEqual(members, [
+        {
+          book_id: books[0].id,
+          included: 1,
+          quantity: 2,
+          title: books[0].title,
+          unit_price: books[0].price,
+        },
+        {
+          book_id: books[1].id,
+          included: 0,
+          quantity: 1,
+          title: books[1].title,
+          unit_price: books[1].price,
+        },
+        {
+          book_id: books[2].id,
+          included: 1,
+          quantity: 1,
+          title: books[2].title,
+          unit_price: books[2].price,
+        },
+      ])
+
+      const patched = await fetch(`${cartBaseUrl}${booksItemPath(books[0].id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(bookBody(books[0].title, books[0].price + 500)),
+      })
+      assert.equal(patched.status, 200)
+      const afterLivePriceChange = membersInDb(body.id)
+      assert.deepEqual(afterLivePriceChange, members)
+    })
+
+    it('adds a second line without changing the first', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-repeat`
+      const { books, pack } = await seedGrade5Pack(cookie, suffix, [2250, 900])
+      const firstSelection = `${books[0].id}:1`
+      const secondSelection = `${books[1].id}:3`
+
+      const first = await addPack(parentCookie, pack.id, firstSelection)
+      assert.equal(first.status, 201)
+      const firstBody = (await first.json()) as CartLineJson
+
+      const second = await addPack(parentCookie, pack.id, secondSelection)
+      assert.equal(second.status, 201)
+      const secondBody = (await second.json()) as CartLineJson
+      assert.equal(secondBody.sequence, 2)
+      assert.equal(secondBody.label, 'Pack 2 of Grade 5')
+
+      const listed = await listCart(parentCookie)
+      assert.equal(listed.status, 200)
+      const forPack = listed.lines.filter((line) => line.packId === pack.id)
+      assert.equal(forPack.length, 2)
+      assert.deepEqual(
+        forPack.map((line) => line.label),
+        ['Pack 1 of Grade 5', 'Pack 2 of Grade 5'],
+      )
+      assert.equal(forPack[0].id, firstBody.id)
+      assert.equal(forPack[1].id, secondBody.id)
+
+      const firstMembers = membersInDb(firstBody.id)
+      assert.equal(firstMembers.find((row) => row.book_id === books[0].id)?.included, 1)
+      assert.equal(firstMembers.find((row) => row.book_id === books[1].id)?.included, 0)
+    })
+
+    it('refuses invalid configurations without inserting a row', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-invalid`
+      const { books, pack } = await seedGrade5Pack(cookie, suffix, [2250, 900])
+      const before = lineCountInDb()
+
+      const cases: Array<{ selection: unknown; message: RegExp; field?: string }> = [
+        {
+          selection: `${books[0].id}:21`,
+          message: /Item count exeeded, you can only order 20 per item/,
+          field: 'quantity',
+        },
+        {
+          selection: '',
+          message: /Keep at least one book to add this pack\./,
+          field: 'selection',
+        },
+        {
+          selection: `${books[0].id}:1,${books[0].id}:2`,
+          message: /Choose each book only once\./,
+          field: 'selection',
+        },
+        {
+          selection: '999999:1',
+          message: /That book is not available\./,
+          field: 'selection',
+        },
+        {
+          selection: 'abc',
+          message: /Choose books from this pack\./,
+          field: 'selection',
+        },
+      ]
+
+      for (const trial of cases) {
+        const response = await addPack(parentCookie, pack.id, trial.selection)
+        assert.equal(response.status, 400, String(trial.selection))
+        const body = (await response.json()) as ErrorBody
+        assert.equal(body.error.code, 'invalid_input')
+        assert.match(body.error.message, trial.message)
+        if (trial.field) assert.equal(body.error.field, trial.field)
+      }
+      assert.equal(lineCountInDb(), before)
+    })
+
+    it('answers 404 when the pack is not a live browse pack', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-missing`
+      const archivedPack = await seedGrade5Pack(cookie, `${suffix}-pack`, [1000])
+      await archiveRow(cookie, 'packs', archivedPack.pack.id)
+      const archivedSchool = await seedGrade5Pack(cookie, `${suffix}-school`, [1000])
+      await archiveRow(cookie, 'schools', archivedSchool.school.id)
+      const archivedGrade = await seedGrade5Pack(cookie, `${suffix}-grade`, [1000])
+      await archiveRow(cookie, 'grades', archivedGrade.grade.id)
+      const before = lineCountInDb()
+
+      const urls = [
+        { packId: 99999, selection: '1:1' },
+        { packId: archivedPack.pack.id, selection: `${archivedPack.books[0].id}:1` },
+        { packId: archivedSchool.pack.id, selection: `${archivedSchool.books[0].id}:1` },
+        { packId: archivedGrade.pack.id, selection: `${archivedGrade.books[0].id}:1` },
+      ]
+      for (const trial of urls) {
+        const response = await addPack(parentCookie, trial.packId, trial.selection)
+        assert.equal(response.status, 404, String(trial.packId))
+        const body = (await response.json()) as ErrorBody
+        assert.equal(body.error.code, 'not_found')
+      }
+      assert.equal(lineCountInDb(), before)
+    })
+
+    it('answers 401 without a parent cookie', async () => {
+      const before = lineCountInDb()
+      const response = await addPack(undefined, 1, '1:1')
+      assert.equal(response.status, 401)
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, 'unauthenticated')
+      assert.equal(body.error.message, 'Sign in to continue.')
+      assert.equal(lineCountInDb(), before)
+
+      const stale = await addPack('booklist.sid=not-a-session', 1, '1:1')
+      assert.equal(stale.status, 401)
+      const staleBody = (await stale.json()) as ErrorBody
+      assert.equal(staleBody.error.code, 'unauthenticated')
+      assert.equal(lineCountInDb(), before)
+    })
+
+    it('answers 403 for an admin session', async () => {
+      const cookie = await signInAdmin()
+      const before = lineCountInDb()
+      const response = await addPack(cookie, 1, '1:1')
+      assert.equal(response.status, 403)
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, 'forbidden')
+      assert.equal(lineCountInDb(), before)
+
+      const list = await fetch(`${cartBaseUrl}/api/cart`, { headers: { cookie } })
+      assert.equal(list.status, 403)
+    })
+
+    it('lists only the signed-in parent lines', async () => {
+      const cookie = await signInAdmin()
+      const suffix = `${Date.now()}-parent-b`
+      const { books, pack } = await seedGrade5Pack(cookie, suffix, [1500])
+      const selection = `${books[0].id}:1`
+
+      const added = await addPack(parentCookie, pack.id, selection)
+      assert.equal(added.status, 201)
+      const forA = await listCart(parentCookie)
+      const forB = await listCart(parentBCookie)
+      assert.ok(forA.lines.some((line) => line.packId === pack.id))
+      assert.equal(
+        forB.lines.filter((line) => line.packId === pack.id).length,
+        0,
+      )
+    })
+
+    it('serializes ticked choices and keeps cart UI free of totals and remove', () => {
+      const books = [
+        { id: 3, title: 'Atlas', price: 2250 },
+        { id: 7, title: 'Maths', price: 900 },
+      ]
+      const choices = {
+        3: { ticked: true, quantity: 2 },
+        7: { ticked: false, quantity: 1 },
+      }
+      assert.equal(selectionFromChoices(books, choices), '3:2')
+    })
+
+    it('keeps cart SQL in the domain module and wires Add, chips, and the badge', async () => {
+      const packPage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'PackPage.tsx'),
+        'utf8',
+      )
+      const authGate = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'AuthGate.tsx'),
+        'utf8',
+      )
+      const shell = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'Shell.tsx'),
+        'utf8',
+      )
+      const cartPage = await readFile(
+        path.join(repoRoot, 'client', 'storefront', 'src', 'CartPage.tsx'),
+        'utf8',
+      )
+      const storefrontApp = await readFile(storefrontAppPath, 'utf8')
+      const api = await readFile(path.join(serverRoot, 'web', 'api.ts'), 'utf8')
+      const cartHttp = await readFile(path.join(serverRoot, 'cart', 'http.ts'), 'utf8')
+      const cartPacks = await readFile(path.join(serverRoot, 'cart', 'packs.ts'), 'utf8')
+      const packsModule = await readFile(path.join(serverRoot, 'catalog', 'packs.ts'), 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+      const runMigrations = await readFile(
+        path.join(serverRoot, 'db', 'migrations', 'run.ts'),
+        'utf8',
+      )
+
+      assert.match(runMigrations, /007_cart_pack_lines\.sql/)
+      assert.match(packsModule, /export function getBrowsePackGradeName/)
+      assert.match(api, /createCartRouter/)
+      assert.doesNotMatch(cartHttp, /db\.prepare/)
+      assert.match(cartPacks, /INSERT INTO cart_pack_lines/)
+      assert.match(cartPacks, /cart_pack_line_members/)
+      assert.doesNotMatch(cartPacks, /FROM packs/)
+      assert.doesNotMatch(cartPacks, /FROM books/)
+      assert.doesNotMatch(cartPacks, /FROM grades/)
+
+      assert.match(packPage, /\/api\/cart\/packs/)
+      assert.match(packPage, /AuthSurface/)
+      assert.match(packPage, /selectionFromChoices/)
+      assert.match(packPage, /credentials: 'include'/)
+      assert.equal(packPage.includes("navigate('/')"), false)
+
+      assert.match(authGate, /export function AuthSurface/)
+      assert.match(authGate, /navigate\('\/', \{ replace: true \}/)
+
+      assert.match(storefrontApp, /element=\{<CartPage \/>\}/)
+      assert.match(cartPage, /cart-line-chip/)
+      assert.doesNotMatch(cartPage, /Remove/)
+      assert.doesNotMatch(cartPage, /Cart is Empty/)
+      assert.doesNotMatch(cartPage, /formatRupees/)
+      assert.doesNotMatch(cartPage, /stepper/)
+
+      assert.match(shell, /nav-badge/)
+      assert.match(shell, /useCartBadge/)
+      assert.match(shell, /count < 1/)
+
+      assert.match(cssRule(baseCss, '.cart-line-chip.is-first'), /var\(--color-text-primary\)/)
+      assert.match(cssRule(baseCss, '.cart-line-chip.is-first'), /var\(--color-accent-primary\)/)
+      assert.match(cssRule(baseCss, '.cart-line-chip.is-later'), /var\(--color-accent-primary\)/)
+      assert.match(cssRule(baseCss, '.cart-line-chip.is-later'), /var\(--color-focus-ring\)/)
+      assert.match(cssRule(baseCss, '.cart-line-chip.is-later'), /var\(--color-border-strong\)/)
     })
   })
 })
