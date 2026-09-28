@@ -9,13 +9,25 @@ import {
 } from 'react'
 import { useSession } from './auth'
 
-export type CartLine = {
+export type CartPackLine = {
+  kind: 'pack'
   id: number
   packId: number
   sequence: number
   gradeName: string
   label: string
 }
+
+export type CartItemLine = {
+  kind: 'item'
+  id: number
+  itemId: number
+  quantity: number
+  title: string
+  unitPrice: number
+}
+
+export type CartLine = CartPackLine | CartItemLine
 
 type CartBadge = {
   count: number
@@ -28,6 +40,22 @@ export function useCartBadge(): CartBadge {
   const value = useContext(CartBadgeContext)
   if (!value) throw new Error('Cart badge is missing')
   return value
+}
+
+function isCartLine(value: unknown): value is CartLine {
+  if (!value || typeof value !== 'object') return false
+  const line = value as Record<string, unknown>
+  if (line.kind === 'pack') {
+    return typeof line.id === 'number' && typeof line.label === 'string'
+  }
+  if (line.kind === 'item') {
+    return (
+      typeof line.id === 'number' &&
+      typeof line.title === 'string' &&
+      typeof line.quantity === 'number'
+    )
+  }
+  return false
 }
 
 export function CartBadgeProvider({ children }: { children: ReactNode }) {
@@ -51,9 +79,10 @@ export function CartBadgeProvider({ children }: { children: ReactNode }) {
           setCount(0)
           return
         }
-        const body = (await response.json()) as { lines?: CartLine[] }
+        const body = (await response.json()) as { lines?: unknown }
         if (gen !== refreshGen.current || sessionStatusRef.current !== 'in') return
-        setCount(Array.isArray(body.lines) ? body.lines.length : 0)
+        const lines = Array.isArray(body.lines) ? body.lines.filter(isCartLine) : []
+        setCount(lines.length)
       })
       .catch(() => {
         if (gen !== refreshGen.current || sessionStatusRef.current !== 'in') return

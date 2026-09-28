@@ -24,6 +24,7 @@ const MIGRATIONS: Migration[] = [
   loadMigration('005_catalog_packs.sql'),
   loadMigration('006_catalog_items.sql'),
   loadMigration('007_cart_pack_lines.sql'),
+  loadMigration('008_cart_item_lines.sql'),
 ]
 
 export function runMigrations(db: Database.Database): void {

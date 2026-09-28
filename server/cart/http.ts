@@ -7,6 +7,7 @@ import {
   type SessionLookup,
 } from '../identity/index.js'
 import { enableForeignKeys } from '../identity/seed.js'
+import { addCartItem, listCartItemLines } from './items.js'
 import { addConfiguredPack, listCartPackLines } from './packs.js'
 
 const PARENT_FORBIDDEN =
@@ -54,7 +55,7 @@ function requireParent(
   return lookup.account.id
 }
 
-function parsePackId(value: unknown): number | undefined {
+function parsePositiveId(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1) return value
   if (typeof value === 'string' && /^[1-9]\d*$/.test(value)) {
     const id = Number(value)
@@ -74,7 +75,7 @@ export function createCartRouter(db: Database.Database, env: IdentityEnv): Route
       if (parentId === undefined) return
 
       const body = (req.body ?? {}) as Record<string, unknown>
-      const packId = parsePackId(body.packId)
+      const packId = parsePositiveId(body.packId)
       if (packId === undefined) {
         sendError(res, 400, 'invalid_input', 'Choose a pack.', 'packId')
         return
@@ -96,6 +97,35 @@ export function createCartRouter(db: Database.Database, env: IdentityEnv): Route
     }),
   )
 
+  router.post(
+    '/cart/items',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const itemId = parsePositiveId(body.itemId)
+      if (itemId === undefined) {
+        sendError(res, 400, 'invalid_input', 'Choose an item.', 'itemId')
+        return
+      }
+
+      const result = addCartItem(db, parentId, itemId, body.quantity)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+
+      res.status(result.created ? 201 : 200).json({
+        id: result.line.id,
+        itemId: result.line.itemId,
+        quantity: result.line.quantity,
+        title: result.line.title,
+        unitPrice: result.line.unitPrice,
+      })
+    }),
+  )
+
   router.get(
     '/cart',
     safe((req, res) => {
@@ -103,15 +133,25 @@ export function createCartRouter(db: Database.Database, env: IdentityEnv): Route
       const parentId = requireParent(db, env, req, res)
       if (parentId === undefined) return
 
-      const lines = listCartPackLines(db, parentId)
+      const packLines = listCartPackLines(db, parentId).map((line) => ({
+        kind: 'pack' as const,
+        id: line.id,
+        packId: line.packId,
+        sequence: line.sequence,
+        gradeName: line.gradeName,
+        label: line.label,
+      }))
+      const itemLines = listCartItemLines(db, parentId).map((line) => ({
+        kind: 'item' as const,
+        id: line.id,
+        itemId: line.itemId,
+        quantity: line.quantity,
+        title: line.title,
+        unitPrice: line.unitPrice,
+      }))
+
       res.status(200).json({
-        lines: lines.map((line) => ({
-          id: line.id,
-          packId: line.packId,
-          sequence: line.sequence,
-          gradeName: line.gradeName,
-          label: line.label,
-        })),
+        lines: [...packLines, ...itemLines],
       })
     }),
   )

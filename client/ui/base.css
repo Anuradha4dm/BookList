@@ -627,6 +627,13 @@ summary,
   border: var(--space-edge-strong) solid var(--color-border-strong);
 }
 
+.cart-item-line {
+  margin: 0;
+  min-height: var(--space-touch-min);
+  display: flex;
+  align-items: center;
+}
+
 @media (min-width: 760px) {
   .storefront-header {
     background: var(--color-text-primary);
