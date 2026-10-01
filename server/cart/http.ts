@@ -8,6 +8,7 @@ import {
 } from '../identity/index.js'
 import { enableForeignKeys } from '../identity/seed.js'
 import {
+  acceptItemLinePrice,
   addCartItem,
   listCartItemLines,
   removeCartItemLine,
@@ -16,6 +17,7 @@ import {
 } from './items.js'
 import { CART_LINE_NOT_FOUND_MESSAGE, PACK_MEMBER_NOT_FOUND_MESSAGE } from './edits.js'
 import {
+  acceptPackLinePrice,
   addConfiguredPack,
   cartGoodsTotal,
   listCartPackLines,
@@ -23,6 +25,7 @@ import {
   setPackMemberQuantity,
   type CartPackLineWithTotal,
 } from './packs.js'
+import { annotateCart } from './staleness.js'
 
 const PARENT_FORBIDDEN =
   'This is a parent cart. Sign in as a parent to view or add packs.'
@@ -109,6 +112,12 @@ function itemLineJson(line: CartItemLineWithTotal) {
   }
 }
 
+/** A whole-rupee figure from a JSON body: a non-negative safe integer number, nothing coerced. */
+function parseRupees(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value
+  return undefined
+}
+
 function sendLineNotFound(res: Response): void {
   sendError(res, 404, 'not_found', CART_LINE_NOT_FOUND_MESSAGE)
 }
@@ -189,6 +198,78 @@ export function createCartRouter(db: Database.Database, env: IdentityEnv): Route
         lines: [...packLines.map(packLineJson), ...itemLines.map(itemLineJson)],
         goodsTotal: cartGoodsTotal(packLines, itemLines),
       })
+    }),
+  )
+
+  // Registered ahead of any `/cart/:x` pattern so `checkout` is never read as a line id.
+  router.get(
+    '/cart/checkout',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const annotated = annotateCart(db, parentId)
+      res.status(200).json({
+        lines: [
+          ...annotated.packLines.map((line) => ({ ...packLineJson(line), stale: line.stale })),
+          ...annotated.itemLines.map((line) => ({ ...itemLineJson(line), stale: line.stale })),
+        ],
+        goodsTotal: annotated.goodsTotal,
+        attentionCount: annotated.attentionCount,
+      })
+    }),
+  )
+
+  router.post(
+    '/cart/packs/:lineId/accept-price',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const lineTotal = parseRupees(body.lineTotal)
+      if (lineTotal === undefined) {
+        sendError(res, 400, 'invalid_input', 'Send the line total you accepted.', 'lineTotal')
+        return
+      }
+      const result = acceptPackLinePrice(db, parentId, lineId, lineTotal)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(200).json({ ...packLineJson(result.line), stale: null })
+    }),
+  )
+
+  router.post(
+    '/cart/items/:lineId/accept-price',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const unitPrice = parseRupees(body.unitPrice)
+      if (unitPrice === undefined) {
+        sendError(res, 400, 'invalid_input', 'Send the price you accepted.', 'unitPrice')
+        return
+      }
+      const result = acceptItemLinePrice(db, parentId, lineId, unitPrice)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(200).json({ ...itemLineJson(result.line), stale: null })
     }),
   )
 

@@ -5,7 +5,7 @@ import {
   QUANTITY_MIN,
   QUANTITY_RANGE_MESSAGE,
 } from '../catalog/packs.js'
-import { lineNotFound, type CartEditFailure } from './edits.js'
+import { lineNotFound, priceConflict, type CartEditFailure, type LineStale } from './edits.js'
 
 export type CartItemLine = {
   id: number
@@ -216,4 +216,47 @@ export function removeCartItemLine(
     .run(lineId, parentId)
   if (deleted.changes === 0) return lineNotFound()
   return { ok: true }
+}
+
+/** The staleness flag for one stored item line, through catalog reads only; never writes. */
+export function itemLineStale(db: Database.Database, line: CartItemLine): LineStale {
+  const live = getLiveItem(db, line.itemId)
+  if (!live) return { kind: 'unavailable' }
+  if (live.price !== line.unitPrice) {
+    return { kind: 'repriced', lineTotal: line.quantity * live.price }
+  }
+  return null
+}
+
+/**
+ * Accepts the live unit price on the parent's own repriced item line, only when the price
+ * the parent saw still matches live. Title stays as stored.
+ */
+export function acceptItemLinePrice(
+  db: Database.Database,
+  parentId: number,
+  lineId: number,
+  expectedUnitPrice: number,
+): ItemEditResult {
+  return db.transaction((): ItemEditResult => {
+    const row = db
+      .prepare(
+        `SELECT id, item_id, quantity, title, unit_price
+         FROM cart_item_lines
+         WHERE id = ? AND parent_id = ?`,
+      )
+      .get(lineId, parentId) as SqlRow | undefined
+    if (!row) return lineNotFound()
+    const line = toLine(row)
+    const live = getLiveItem(db, line.itemId)
+    if (!live || live.price === line.unitPrice || live.price !== expectedUnitPrice) {
+      return priceConflict()
+    }
+    db.prepare('UPDATE cart_item_lines SET unit_price = ? WHERE id = ? AND parent_id = ?').run(
+      live.price,
+      lineId,
+      parentId,
+    )
+    return { ok: true, line: withItemTotal({ ...line, unitPrice: live.price }) }
+  })()
 }

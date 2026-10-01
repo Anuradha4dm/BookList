@@ -7,7 +7,13 @@ import {
   getBrowsePack,
   getBrowsePackGradeName,
 } from '../catalog/packs.js'
-import { lineNotFound, memberNotFound, type CartEditFailure } from './edits.js'
+import {
+  lineNotFound,
+  memberNotFound,
+  priceConflict,
+  type CartEditFailure,
+  type LineStale,
+} from './edits.js'
 import { parseQuantity, type CartItemLineWithTotal } from './items.js'
 
 export type CartPackLineMember = {
@@ -314,5 +320,76 @@ export function removeCartPackLine(
     db.prepare('DELETE FROM cart_pack_line_members WHERE line_id = ?').run(lineId)
     db.prepare('DELETE FROM cart_pack_lines WHERE id = ? AND parent_id = ?').run(lineId, parentId)
     return { ok: true }
+  })()
+}
+
+type PackLineAssessment = {
+  stale: LineStale
+  /** Live price per included member, present only when the line is not unavailable. */
+  livePrices: Map<number, number>
+}
+
+/**
+ * Compares a stored pack line with the live catalog, through catalog reads only.
+ * Unavailable: the pack (or its school or grade) is off the list, or an included title is
+ * no longer a live member. Repriced: an included title's stored price differs from live.
+ * Unticked members are never inspected.
+ */
+function assessPackLine(db: Database.Database, line: CartPackLine): PackLineAssessment {
+  const livePrices = new Map<number, number>()
+  const live = getBrowsePack(db, line.packId)
+  if (!live) return { stale: { kind: 'unavailable' }, livePrices }
+  const liveBooks = new Map(live.books.map((book) => [book.id, book.price] as const))
+  let repriced = false
+  let lineTotal = 0
+  for (const member of line.members) {
+    if (!member.included) continue
+    const price = liveBooks.get(member.bookId)
+    if (price === undefined) return { stale: { kind: 'unavailable' }, livePrices: new Map() }
+    livePrices.set(member.bookId, price)
+    if (price !== member.unitPrice) repriced = true
+    lineTotal += member.quantity * price
+  }
+  return { stale: repriced ? { kind: 'repriced', lineTotal } : null, livePrices }
+}
+
+/** The staleness flag for one stored pack line; never writes. */
+export function packLineStale(db: Database.Database, line: CartPackLine): LineStale {
+  return assessPackLine(db, line).stale
+}
+
+type AcceptPackResult = { ok: true; line: CartPackLineWithTotal } | CartEditFailure
+
+/**
+ * Accepts the live price on the parent's own repriced pack line. Only the included members
+ * whose stored price differs from live are rewritten, and only when the total the parent saw
+ * still matches live; anything else is a conflict and nothing changes.
+ */
+export function acceptPackLinePrice(
+  db: Database.Database,
+  parentId: number,
+  lineId: number,
+  expectedLineTotal: number,
+): AcceptPackResult {
+  return db.transaction((): AcceptPackResult => {
+    const row = ownedLineRow(db, parentId, lineId)
+    if (!row) return lineNotFound()
+    const line = toLine(row, membersForLine(db, lineId))
+    const { stale, livePrices } = assessPackLine(db, line)
+    if (!stale || stale.kind !== 'repriced' || stale.lineTotal !== expectedLineTotal) {
+      return priceConflict()
+    }
+    const update = db.prepare(
+      `UPDATE cart_pack_line_members SET unit_price = ?
+       WHERE line_id = ? AND book_id = ? AND included = 1`,
+    )
+    for (const member of line.members) {
+      if (!member.included) continue
+      const price = livePrices.get(member.bookId)
+      if (price !== undefined && price !== member.unitPrice) {
+        update.run(price, lineId, member.bookId)
+      }
+    }
+    return { ok: true, line: withTotal(toLine(row, membersForLine(db, lineId))) }
   })()
 }

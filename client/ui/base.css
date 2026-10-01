@@ -755,6 +755,128 @@ summary,
   cursor: pointer;
 }
 
+.cart-checkout {
+  margin-top: var(--space-4);
+}
+
+/* Banner / notice: 3px semantic edge over the matching tint, title in the hue. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 13px 15px;
+  border-radius: var(--radius-md);
+  border: var(--space-edge-strong) solid var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.notice-danger {
+  background: var(--color-danger-tint);
+  border-color: var(--color-danger);
+}
+
+.notice-warning {
+  background: var(--color-warn-tint);
+  border-color: var(--color-warning);
+}
+
+.notice-title {
+  margin: 0;
+}
+
+.notice-danger > .notice-title {
+  color: var(--color-danger);
+}
+
+.notice-warning > .notice-title {
+  color: var(--color-warning);
+}
+
+.notice-body {
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 13px;
+}
+
+.notice-actions > .button-primary,
+.notice-actions > .button-secondary {
+  width: auto;
+  flex: 1 1 auto;
+  min-height: var(--space-touch-min);
+}
+
+.checkout-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.checkout-banner-region:empty {
+  display: none;
+}
+
+/* The fixed delivery line: never a figure, always above the goods total. */
+.checkout-delivery-strip {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  background: var(--color-accent-quiet);
+  border: var(--space-edge-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-default);
+  color: var(--color-text-primary);
+}
+
+.checkout-address {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.checkout-section-label {
+  margin: 0;
+}
+
+.checkout-address-text {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.checkout-note-control {
+  min-height: calc(var(--space-control-h) * 2);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+
+.checkout-place {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.checkout-place-reason {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+/* Blocked primary: same size and place, sunken fill, no lift; still focusable via aria-disabled. */
+.button-primary.button-blocked {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  border: var(--space-edge-hairline) solid var(--color-border-default);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.button-primary.button-blocked:active {
+  box-shadow: none;
+}
+
 @media (min-width: 760px) {
   .storefront-header {
     background: var(--color-text-primary);

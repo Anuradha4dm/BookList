@@ -52,9 +52,15 @@ import {
   toggleChoice,
 } from '../../client/storefront/src/packConfig.ts'
 import { browseActive } from '../../client/storefront/src/Shell.tsx'
-import { compositionMeta, parseCartBody } from '../../client/storefront/src/cartLines.ts'
+import {
+  compositionMeta,
+  parseCartBody,
+  acceptPriceRequest,
+  parseCheckoutBody,
+} from '../../client/storefront/src/cartLines.ts'
 import { formatRupees } from '../../client/ui/money.ts'
 import { toStorefrontPack } from '../catalog/packs.ts'
+import { checkoutBlock } from '../cart/index.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -167,6 +173,8 @@ const CART_ITEMS_PORT = String(18780)
 const cartItemsBaseUrl = `http://127.0.0.1:${CART_ITEMS_PORT}`
 const CART_TOTALS_PORT = String(18781)
 const cartTotalsBaseUrl = `http://127.0.0.1:${CART_TOTALS_PORT}`
+const CHECKOUT_PORT = String(18782)
+const checkoutBaseUrl = `http://127.0.0.1:${CHECKOUT_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -7596,7 +7604,7 @@ describe('I/O & edge-case matrix', () => {
       assert.match(cartLinesModule, /export function compositionMeta/)
       assert.doesNotMatch(cartLinesModule, /from 'react'/)
       assert.doesNotMatch(cartPage, /Browse/)
-      assert.doesNotMatch(cartPage, /<Link/)
+      // Story 4.1 adds the Checkout link, so `<Link` is allowed on the Cart page.
       assert.doesNotMatch(cartPage, /navigate/)
       assert.doesNotMatch(cartPage, /localStorage|sessionStorage/)
       assert.doesNotMatch(cartPage, /type="checkbox"/)
@@ -7613,6 +7621,781 @@ describe('I/O & edge-case matrix', () => {
       assert.ok(cssRule(baseCss, '.cart-goods-total'))
       assert.ok(cssRule(baseCss, '.cart-line-meta'))
       assert.ok(cssRule(baseCss, '.cart-line-total'))
+    })
+  })
+
+  describe('Checkout — address, delivery line, note, and stale lines', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parentSerial = 0
+
+    const CONFLICT_MESSAGE = 'That price changed again. Review this line.'
+    const DELIVERY_COPY = 'Delivery charge: to be confirmed by the shop'
+
+    type MemberJson = {
+      bookId: number
+      included: boolean
+      quantity: number
+      title: string
+      unitPrice: number
+    }
+    type StaleJson = null | { kind: 'unavailable' } | { kind: 'repriced'; lineTotal: number }
+    type PackLineJson = {
+      kind: 'pack'
+      id: number
+      packId: number
+      sequence: number
+      gradeName: string
+      label: string
+      members: MemberJson[]
+      lineTotal: number
+    }
+    type ItemLineJson = {
+      kind: 'item'
+      id: number
+      itemId: number
+      quantity: number
+      title: string
+      unitPrice: number
+      lineTotal: number
+    }
+    type LineJson = PackLineJson | ItemLineJson
+    type CartJson = { lines: LineJson[]; goodsTotal: number }
+    type CheckoutLineJson = LineJson & { stale: StaleJson }
+    type CheckoutJson = { lines: CheckoutLineJson[]; goodsTotal: number; attentionCount: number }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+    type Parent = { cookie: string; id: number }
+    type Titled = { id: number; title: string }
+
+    type Seeded = {
+      parent: Parent
+      schoolId: number
+      gradeId: number
+      atlas: Titled
+      reader: Titled
+      workbook: Titled
+      item: Titled
+      packId: number
+      packLineId: number
+      itemLineId: number
+    }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${checkoutBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(
+      method: 'POST' | 'PATCH' | 'DELETE',
+      pathName: string,
+      body: unknown,
+      expected: number,
+    ): Promise<unknown> {
+      const response = await fetch(`${checkoutBaseUrl}${pathName}`, {
+        method,
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      assert.equal(response.status, expected, `${method} ${pathName}: ${response.status}`)
+      return expected === 204 ? undefined : await response.json()
+    }
+
+    function suffix(tag: string): string {
+      return `${Date.now()}-${tag}`
+    }
+
+    async function registerParent(tag: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `checkout.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const response = await fetch(`${checkoutBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: `Checkout ${tag}`,
+          deliveryAddress: '12 Temple Road, Nugegoda',
+          whatsapp: '0771234567',
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        const row = db.prepare('SELECT id FROM parents WHERE email = ?').get(email) as
+          | { id: number }
+          | undefined
+        assert.ok(row)
+        return { cookie: cookieHeader(cookie), id: row.id }
+      } finally {
+        db.close()
+      }
+    }
+
+    /**
+     * Own school and grade per seed, so archiving one never touches another test.
+     * Atlas x2 @1,500 and Reader x1 @800 ticked, Workbook @900 unticked; an item x3 @120.
+     */
+    async function seed(tag: string): Promise<Seeded> {
+      const s = suffix(tag)
+      const schoolId = ((await adminSend('POST', '/api/admin/schools', catalogNameBody(`Checkout school ${s}`), 201)) as { id: number }).id
+      const gradeId = ((await adminSend('POST', '/api/admin/grades', catalogNameBody(`Grade ${s}`), 201)) as { id: number }).id
+      const atlas = (await adminSend('POST', '/api/admin/books', bookBody(`Atlas ${s}`, 1500), 201)) as Titled
+      const reader = (await adminSend('POST', '/api/admin/books', bookBody(`Reader ${s}`, 800), 201)) as Titled
+      const workbook = (await adminSend('POST', '/api/admin/books', bookBody(`Workbook ${s}`, 900), 201)) as Titled
+      const pack = (await adminSend(
+        'POST',
+        '/api/admin/packs',
+        packCreateBody(`Checkout pack ${s}`, schoolId, gradeId, 'Checkout', [atlas.id, reader.id, workbook.id]),
+        201,
+      )) as { id: number }
+      const item = (await adminSend('POST', '/api/admin/items', itemBody(`Pencil ${s}`, 'Stationery', 120), 201)) as Titled
+      const parent = await registerParent(tag)
+
+      const packResponse = await fetch(`${checkoutBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${atlas.id}:2,${reader.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      const packLineId = ((await packResponse.json()) as { id: number }).id
+      const itemResponse = await fetch(`${checkoutBaseUrl}/api/cart/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ itemId: item.id, quantity: 3 }),
+      })
+      assert.equal(itemResponse.status, 201)
+      const itemLineId = ((await itemResponse.json()) as { id: number }).id
+      return { parent, schoolId, gradeId, atlas, reader, workbook, item, packId: pack.id, packLineId, itemLineId }
+    }
+
+    async function getCart(cookie: string): Promise<CartJson> {
+      const response = await fetch(`${checkoutBaseUrl}/api/cart`, { headers: { cookie } })
+      assert.equal(response.status, 200)
+      return (await response.json()) as CartJson
+    }
+
+    async function getCheckout(cookie: string): Promise<CheckoutJson> {
+      const response = await fetch(`${checkoutBaseUrl}/api/cart/checkout`, { headers: { cookie } })
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      return (await response.json()) as CheckoutJson
+    }
+
+    function staleOf(checkout: CheckoutJson, kind: 'pack' | 'item'): StaleJson {
+      const line = checkout.lines.find((entry) => entry.kind === kind)
+      assert.ok(line, `missing ${kind} line`)
+      return line.stale
+    }
+
+    function accept(
+      kind: 'packs' | 'items',
+      lineId: number | string,
+      cookie: string | undefined,
+      body: unknown,
+    ): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      return fetch(`${checkoutBaseUrl}/api/cart/${kind}/${lineId}/accept-price`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      })
+    }
+
+    function cartRows(parentId: number): unknown {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        const packs = db
+          .prepare('SELECT * FROM cart_pack_lines WHERE parent_id = ? ORDER BY id')
+          .all(parentId)
+        const members = db
+          .prepare(
+            `SELECT m.* FROM cart_pack_line_members m
+             JOIN cart_pack_lines l ON l.id = m.line_id
+             WHERE l.parent_id = ?
+             ORDER BY m.line_id, m.book_id`,
+          )
+          .all(parentId)
+        const items = db
+          .prepare('SELECT * FROM cart_item_lines WHERE parent_id = ? ORDER BY id')
+          .all(parentId)
+        return { packs, members, items }
+      } finally {
+        db.close()
+      }
+    }
+
+    function guard(parentId: number): { attentionCount: number } {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return checkoutBlock(db, parentId)
+      } finally {
+        db.close()
+      }
+    }
+
+    function repriceBook(book: Titled, price: number): Promise<unknown> {
+      return adminSend('PATCH', booksItemPath(book.id), bookBody(book.title, price), 200)
+    }
+
+    function repriceItem(item: Titled, price: number): Promise<unknown> {
+      return adminSend('PATCH', itemsItemPath(item.id), itemBody(item.title, 'Stationery', price), 200)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-checkout-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, CHECKOUT_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('clean: answers the 3.3 lines plus stale null, the same goods total, and writes nothing', async () => {
+      const seeded = await seed('clean')
+      const before = cartRows(seeded.parent.id)
+      const cartBefore = await getCart(seeded.parent.cookie)
+      const checkout = await getCheckout(seeded.parent.cookie)
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+
+      assert.equal(checkout.attentionCount, 0)
+      assert.equal(checkout.goodsTotal, 4160)
+      assert.deepEqual(
+        checkout.lines,
+        cartBefore.lines.map((line) => ({ ...line, stale: null })),
+      )
+      // GET /cart keeps its 3.3 shape: no stale key, no attention count.
+      const cartAfter = await getCart(seeded.parent.cookie)
+      assert.deepEqual(cartAfter, cartBefore)
+      assert.deepEqual(Object.keys(cartAfter).sort(), ['goodsTotal', 'lines'])
+      for (const line of cartAfter.lines) assert.equal('stale' in line, false)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 0 })
+
+      const empty = await registerParent('empty')
+      assert.deepEqual(await getCheckout(empty.cookie), { lines: [], goodsTotal: 0, attentionCount: 0 })
+    })
+
+    it('pack archived: the pack, its school, or its grade going off the list flags the line unavailable', async () => {
+      const targets: Array<(seeded: Seeded) => string> = [
+        (seeded) => packsArchivePath(seeded.packId),
+        (seeded) => catalogArchivePath('schools', seeded.schoolId),
+        (seeded) => catalogArchivePath('grades', seeded.gradeId),
+      ]
+      for (const [index, target] of targets.entries()) {
+        const seeded = await seed(`archived-${index}`)
+        await adminSend('POST', target(seeded), undefined, 200)
+        const before = cartRows(seeded.parent.id)
+        const checkout = await getCheckout(seeded.parent.cookie)
+        assert.deepEqual(cartRows(seeded.parent.id), before)
+        assert.deepEqual(staleOf(checkout, 'pack'), { kind: 'unavailable' })
+        assert.equal(staleOf(checkout, 'item'), null)
+        assert.equal(checkout.attentionCount, 1)
+        assert.equal(checkout.goodsTotal, 4160)
+        assert.deepEqual(guard(seeded.parent.id), { attentionCount: 1 })
+      }
+    })
+
+    it('book gone: an included book archived, removed from the pack, or deleted flags unavailable', async () => {
+      const archived = await seed('book-archived')
+      await adminSend('POST', booksArchivePath(archived.reader.id), undefined, 200)
+      assert.deepEqual(staleOf(await getCheckout(archived.parent.cookie), 'pack'), { kind: 'unavailable' })
+
+      const removed = await seed('book-removed')
+      await adminSend(
+        'PATCH',
+        packsItemPath(removed.packId),
+        packPatchBody('Checkout pack', 'Checkout', [removed.atlas.id, removed.workbook.id]),
+        200,
+      )
+      assert.deepEqual(staleOf(await getCheckout(removed.parent.cookie), 'pack'), { kind: 'unavailable' })
+
+      const deleted = await seed('book-deleted')
+      await adminSend(
+        'PATCH',
+        packsItemPath(deleted.packId),
+        packPatchBody('Checkout pack', 'Checkout', [deleted.atlas.id, deleted.workbook.id]),
+        200,
+      )
+      await adminSend('DELETE', booksItemPath(deleted.reader.id), undefined, 204)
+      const checkout = await getCheckout(deleted.parent.cookie)
+      assert.deepEqual(staleOf(checkout, 'pack'), { kind: 'unavailable' })
+      assert.equal(checkout.attentionCount, 1)
+
+      // Unavailable wins over repriced on the same line.
+      const both = await seed('book-both')
+      await repriceBook(both.atlas, 1600)
+      await adminSend('POST', booksArchivePath(both.reader.id), undefined, 200)
+      assert.deepEqual(staleOf(await getCheckout(both.parent.cookie), 'pack'), { kind: 'unavailable' })
+    })
+
+    it('unticked book gone: archiving or repricing only an unticked member leaves the line clean', async () => {
+      const repriced = await seed('unticked-repriced')
+      await repriceBook(repriced.workbook, 950)
+      const first = await getCheckout(repriced.parent.cookie)
+      assert.equal(staleOf(first, 'pack'), null)
+      assert.equal(first.attentionCount, 0)
+
+      const archived = await seed('unticked-archived')
+      await adminSend('POST', booksArchivePath(archived.workbook.id), undefined, 200)
+      const second = await getCheckout(archived.parent.cookie)
+      assert.equal(staleOf(second, 'pack'), null)
+      assert.equal(second.attentionCount, 0)
+      assert.deepEqual(guard(archived.parent.id), { attentionCount: 0 })
+    })
+
+    it('repriced: reports the live line total while stored figures and the goods total stay add-time', async () => {
+      const seeded = await seed('repriced')
+      await repriceBook(seeded.atlas, 1600)
+      await repriceItem(seeded.item, 150)
+      const before = cartRows(seeded.parent.id)
+      const checkout = await getCheckout(seeded.parent.cookie)
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+
+      assert.deepEqual(staleOf(checkout, 'pack'), { kind: 'repriced', lineTotal: 4000 })
+      assert.deepEqual(staleOf(checkout, 'item'), { kind: 'repriced', lineTotal: 450 })
+      const packLine = checkout.lines.find((line) => line.kind === 'pack')
+      assert.ok(packLine && packLine.kind === 'pack')
+      assert.equal(packLine.lineTotal, 3800)
+      assert.equal(packLine.members.find((m) => m.bookId === seeded.atlas.id)?.unitPrice, 1500)
+      assert.equal(checkout.goodsTotal, 4160)
+      assert.equal(checkout.attentionCount, 2)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 2 })
+      assert.equal((await getCart(seeded.parent.cookie)).goodsTotal, 4160)
+    })
+
+    it('accept pack: rewrites only the stale included prices, then the line is clean', async () => {
+      const seeded = await seed('accept-pack')
+      await repriceBook(seeded.atlas, 1600)
+      await repriceBook(seeded.workbook, 990)
+      const response = await accept('packs', seeded.packLineId, seeded.parent.cookie, { lineTotal: 4000 })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as CheckoutLineJson
+      assert.equal(body.kind, 'pack')
+      assert.equal(body.lineTotal, 4000)
+      assert.equal(body.stale, null)
+
+      const rows = cartRows(seeded.parent.id) as { members: Array<{ book_id: number; unit_price: number; title: string }> }
+      const price = (bookId: number) => rows.members.find((m) => m.book_id === bookId)?.unit_price
+      assert.equal(price(seeded.atlas.id), 1600)
+      assert.equal(price(seeded.reader.id), 800)
+      assert.equal(price(seeded.workbook.id), 900)
+      assert.equal(rows.members.find((m) => m.book_id === seeded.atlas.id)?.title, seeded.atlas.title)
+
+      const checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(staleOf(checkout, 'pack'), null)
+      assert.equal(checkout.attentionCount, 0)
+      assert.equal(checkout.goodsTotal, 4000 + 360)
+      assert.equal((await getCart(seeded.parent.cookie)).goodsTotal, 4360)
+    })
+
+    it('accept item: stores the live unit price when it matches', async () => {
+      const seeded = await seed('accept-item')
+      await repriceItem(seeded.item, 150)
+      const response = await accept('items', seeded.itemLineId, seeded.parent.cookie, { unitPrice: 150 })
+      assert.equal(response.status, 200)
+      const body = (await response.json()) as CheckoutLineJson
+      assert.equal(body.kind, 'item')
+      assert.equal(body.lineTotal, 450)
+      assert.equal(body.stale, null)
+      const rows = cartRows(seeded.parent.id) as { items: Array<{ unit_price: number; title: string }> }
+      assert.equal(rows.items[0].unit_price, 150)
+      assert.equal(rows.items[0].title, seeded.item.title)
+      const checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(staleOf(checkout, 'item'), null)
+      assert.equal(checkout.goodsTotal, 3800 + 450)
+    })
+
+    it('repriced back: returning a ticked book to its add-time price clears the flag', async () => {
+      const seeded = await seed('repriced-back')
+      await repriceBook(seeded.atlas, 1600)
+      let checkout = await getCheckout(seeded.parent.cookie)
+      assert.deepEqual(staleOf(checkout, 'pack'), { kind: 'repriced', lineTotal: 4000 })
+      assert.equal(checkout.attentionCount, 1)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 1 })
+
+      await repriceBook(seeded.atlas, 1500)
+      checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(staleOf(checkout, 'pack'), null)
+      assert.equal(checkout.attentionCount, 0)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 0 })
+    })
+
+    it('accept helper: builds the request from real repriced lines and the server accepts it', async () => {
+      const seeded = await seed('helper')
+      await repriceBook(seeded.atlas, 1600)
+      await repriceItem(seeded.item, 150)
+      const parsed = parseCheckoutBody(await getCheckout(seeded.parent.cookie))
+      assert.ok(parsed)
+      const packLine = parsed.lines.find((line) => line.kind === 'pack')
+      const itemLine = parsed.lines.find((line) => line.kind === 'item')
+      assert.ok(packLine && itemLine)
+
+      const packRequest = acceptPriceRequest(packLine)
+      const itemRequest = acceptPriceRequest(itemLine)
+      assert.deepEqual(packRequest, {
+        url: `/api/cart/packs/${seeded.packLineId}/accept-price`,
+        body: { lineTotal: 4000 },
+      })
+      assert.deepEqual(itemRequest, {
+        url: `/api/cart/items/${seeded.itemLineId}/accept-price`,
+        body: { unitPrice: 150 },
+      })
+      for (const request of [packRequest, itemRequest]) {
+        assert.ok(request)
+        const response = await fetch(`${checkoutBaseUrl}${request.url}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: seeded.parent.cookie },
+          body: JSON.stringify(request.body),
+        })
+        assert.equal(response.status, 200, request.url)
+      }
+      const after = await getCheckout(seeded.parent.cookie)
+      assert.equal(staleOf(after, 'pack'), null)
+      assert.equal(staleOf(after, 'item'), null)
+      assert.equal(after.attentionCount, 0)
+
+      // Null for anything that is not a repriced line, or an item figure that is not whole rupees.
+      const clean = parseCheckoutBody(after)
+      assert.ok(clean)
+      for (const line of clean.lines) assert.equal(acceptPriceRequest(line), null)
+      assert.equal(acceptPriceRequest({ ...itemLine, stale: { kind: 'unavailable' } }), null)
+      assert.equal(
+        acceptPriceRequest({ ...itemLine, quantity: 3, stale: { kind: 'repriced', lineTotal: 451 } }),
+        null,
+      )
+    })
+
+    it('moved again: a figure that no longer matches, a clean line, or an unavailable line is a 409', async () => {
+      const seeded = await seed('moved')
+      const expectConflict = async (kind: 'packs' | 'items', lineId: number, body: unknown) => {
+        const before = cartRows(seeded.parent.id)
+        const response = await accept(kind, lineId, seeded.parent.cookie, body)
+        assert.equal(response.status, 409, `${kind} ${JSON.stringify(body)}`)
+        const error = (await response.json()) as ErrorBody
+        assert.equal(error.error.code, 'conflict')
+        assert.equal(error.error.message, CONFLICT_MESSAGE)
+        assert.deepEqual(cartRows(seeded.parent.id), before)
+      }
+
+      // Not repriced at all.
+      await expectConflict('packs', seeded.packLineId, { lineTotal: 3800 })
+      await expectConflict('items', seeded.itemLineId, { unitPrice: 120 })
+
+      // Repriced, then moved again before the tap.
+      await repriceBook(seeded.atlas, 1600)
+      await repriceItem(seeded.item, 150)
+      await repriceBook(seeded.atlas, 1650)
+      await repriceItem(seeded.item, 160)
+      await expectConflict('packs', seeded.packLineId, { lineTotal: 4000 })
+      await expectConflict('items', seeded.itemLineId, { unitPrice: 150 })
+
+      // Unavailable.
+      await adminSend('POST', packsArchivePath(seeded.packId), undefined, 200)
+      await adminSend('POST', itemsArchivePath(seeded.item.id), undefined, 200)
+      await expectConflict('packs', seeded.packLineId, { lineTotal: 4100 })
+      await expectConflict('items', seeded.itemLineId, { unitPrice: 160 })
+      const checkout = await getCheckout(seeded.parent.cookie)
+      assert.deepEqual(staleOf(checkout, 'pack'), { kind: 'unavailable' })
+      assert.deepEqual(staleOf(checkout, 'item'), { kind: 'unavailable' })
+      assert.equal(checkout.attentionCount, 2)
+    })
+
+    it('bad body: a missing or non-integer figure is a 400 and writes nothing', async () => {
+      const seeded = await seed('bad-body')
+      await repriceBook(seeded.atlas, 1600)
+      await repriceItem(seeded.item, 150)
+      const before = cartRows(seeded.parent.id)
+      for (const body of [{}, { lineTotal: '4000' }, { lineTotal: 4000.5 }, { lineTotal: null }, { lineTotal: -1 }]) {
+        const response = await accept('packs', seeded.packLineId, seeded.parent.cookie, body)
+        assert.equal(response.status, 400, JSON.stringify(body))
+        assert.equal(((await response.json()) as ErrorBody).error.code, 'invalid_input')
+      }
+      for (const body of [
+        {},
+        { unitPrice: '150' },
+        { unitPrice: 150.5 },
+        { unitPrice: null },
+        { unitPrice: -1 },
+        { lineTotal: 450 },
+      ]) {
+        const response = await accept('items', seeded.itemLineId, seeded.parent.cookie, body)
+        assert.equal(response.status, 400, JSON.stringify(body))
+        assert.equal(((await response.json()) as ErrorBody).error.code, 'invalid_input')
+      }
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+    })
+
+    it("foreign or unknown line: 404 with the line-not-found message and no write", async () => {
+      const seeded = await seed('foreign')
+      await repriceBook(seeded.atlas, 1600)
+      await repriceItem(seeded.item, 150)
+      const other = await registerParent('other')
+      // Pack and item line ids come from separate tables and can coincide. When they do, add a
+      // second item line first (it takes a higher rowid while the clashing row still exists),
+      // then remove the clashing one, so the pack-id-on-item-route row is a deterministic 404.
+      const itemLineIdFor = (): number | undefined => {
+        const db = new Database(dbPath, { readonly: true })
+        try {
+          const row = db
+            .prepare('SELECT id FROM cart_item_lines WHERE parent_id = ? ORDER BY id DESC')
+            .get(seeded.parent.id) as { id: number } | undefined
+          return row?.id
+        } finally {
+          db.close()
+        }
+      }
+      if (itemLineIdFor() === seeded.packLineId) {
+        const spare = (await adminSend(
+          'POST',
+          '/api/admin/items',
+          itemBody(`Spare ${suffix('foreign')}`, 'Stationery', 120),
+          201,
+        )) as Titled
+        const added = await fetch(`${checkoutBaseUrl}/api/cart/items`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: seeded.parent.cookie },
+          body: JSON.stringify({ itemId: spare.id, quantity: 1 }),
+        })
+        assert.equal(added.status, 201)
+        const removed = await fetch(`${checkoutBaseUrl}/api/cart/items/${seeded.packLineId}`, {
+          method: 'DELETE',
+          headers: { cookie: seeded.parent.cookie },
+        })
+        assert.equal(removed.status, 204)
+      }
+      const itemLineId = itemLineIdFor()
+      assert.ok(itemLineId !== undefined && itemLineId !== seeded.packLineId)
+      const before = cartRows(seeded.parent.id)
+      const attempts: Array<['packs' | 'items', number | string, string | undefined, unknown]> = [
+        ['packs', seeded.packLineId, other.cookie, { lineTotal: 4000 }],
+        ['items', itemLineId, other.cookie, { unitPrice: 150 }],
+        ['packs', 999999, seeded.parent.cookie, { lineTotal: 4000 }],
+        ['items', 'abc', seeded.parent.cookie, { unitPrice: 150 }],
+        // A pack line id on the item route is not an item line.
+        ['items', seeded.packLineId, seeded.parent.cookie, { unitPrice: 150 }],
+      ]
+      const packLineBefore = (await getCheckout(seeded.parent.cookie)).lines.find(
+        (line) => line.kind === 'pack',
+      )
+      for (const [kind, lineId, cookie, body] of attempts) {
+        const response = await accept(kind, lineId, cookie, body)
+        assert.equal(response.status, 404, `${kind} ${lineId}`)
+        const error = (await response.json()) as ErrorBody
+        assert.equal(error.error.code, 'not_found')
+        assert.equal(error.error.message, 'That line is not in your cart.')
+      }
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+      assert.deepEqual(
+        (await getCheckout(seeded.parent.cookie)).lines.find((line) => line.kind === 'pack'),
+        packLineBefore,
+      )
+    })
+
+    it('auth: 401 without a cookie and 403 for an admin on every new route', async () => {
+      const seeded = await seed('auth')
+      await repriceBook(seeded.atlas, 1600)
+      const before = cartRows(seeded.parent.id)
+      const anonymous = await fetch(`${checkoutBaseUrl}/api/cart/checkout`)
+      assert.equal(anonymous.status, 401)
+      assert.equal(((await anonymous.json()) as ErrorBody).error.code, 'unauthenticated')
+      const admin = await fetch(`${checkoutBaseUrl}/api/cart/checkout`, { headers: { cookie: adminCookie } })
+      assert.equal(admin.status, 403)
+      assert.equal(((await admin.json()) as ErrorBody).error.code, 'forbidden')
+      for (const [kind, lineId, body] of [
+        ['packs', seeded.packLineId, { lineTotal: 4000 }],
+        ['items', seeded.itemLineId, { unitPrice: 120 }],
+      ] as const) {
+        const noCookie = await accept(kind, lineId, undefined, body)
+        assert.equal(noCookie.status, 401, kind)
+        assert.equal(((await noCookie.json()) as ErrorBody).error.code, 'unauthenticated')
+        const asAdmin = await accept(kind, lineId, adminCookie, body)
+        assert.equal(asAdmin.status, 403, kind)
+        assert.equal(((await asAdmin.json()) as ErrorBody).error.code, 'forbidden')
+      }
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+    })
+
+    it('guard: checkoutBlock reports the same count as GET while lines are resolved one by one', async () => {
+      const seeded = await seed('guard')
+      await repriceBook(seeded.atlas, 1600)
+      await adminSend('POST', itemsArchivePath(seeded.item.id), undefined, 200)
+      let checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(checkout.attentionCount, 2)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 2 })
+
+      const removed = await fetch(`${checkoutBaseUrl}/api/cart/items/${seeded.itemLineId}`, {
+        method: 'DELETE',
+        headers: { cookie: seeded.parent.cookie },
+      })
+      assert.equal(removed.status, 204)
+      checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(checkout.attentionCount, 1)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 1 })
+
+      const accepted = await accept('packs', seeded.packLineId, seeded.parent.cookie, { lineTotal: 4000 })
+      assert.equal(accepted.status, 200)
+      checkout = await getCheckout(seeded.parent.cookie)
+      assert.equal(checkout.attentionCount, 0)
+      assert.deepEqual(guard(seeded.parent.id), { attentionCount: 0 })
+    })
+
+    it('parses a real checkout body intact and fails as a whole on a malformed flag', async () => {
+      const seeded = await seed('parse')
+      await repriceBook(seeded.atlas, 1600)
+      await adminSend('POST', itemsArchivePath(seeded.item.id), undefined, 200)
+      const raw = await getCheckout(seeded.parent.cookie)
+      const parsed = parseCheckoutBody(raw)
+      assert.ok(parsed)
+      assert.deepEqual(parsed, raw)
+      assert.equal(parsed.attentionCount, 2)
+
+      const missingStale = structuredClone(raw) as unknown as { lines: Array<Record<string, unknown>> }
+      delete missingStale.lines[0].stale
+      assert.equal(parseCheckoutBody(missingStale), undefined)
+      const badKind = structuredClone(raw) as unknown as { lines: Array<Record<string, unknown>> }
+      badKind.lines[0].stale = { kind: 'gone' }
+      assert.equal(parseCheckoutBody(badKind), undefined)
+      const badTotal = structuredClone(raw) as unknown as { lines: Array<Record<string, unknown>> }
+      badTotal.lines[0].stale = { kind: 'repriced', lineTotal: '4000' }
+      assert.equal(parseCheckoutBody(badTotal), undefined)
+      assert.equal(parseCheckoutBody({ lines: raw.lines, goodsTotal: raw.goodsTotal }), undefined)
+      assert.deepEqual(parseCheckoutBody({ lines: [], goodsTotal: 0, attentionCount: 0 }), {
+        lines: [],
+        goodsTotal: 0,
+        attentionCount: 0,
+      })
+    })
+
+    it('wires the checkout module, page, route, and styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const cartHttp = await read(serverRoot, 'cart', 'http.ts')
+      const cartIndex = await read(serverRoot, 'cart', 'index.ts')
+      const staleness = await read(serverRoot, 'cart', 'staleness.ts')
+      const cartPacks = await read(serverRoot, 'cart', 'packs.ts')
+      const cartItems = await read(serverRoot, 'cart', 'items.ts')
+      const cartEdits = await read(serverRoot, 'cart', 'edits.ts')
+      const storefront = path.join(repoRoot, 'client', 'storefront', 'src')
+      const checkoutPage = await read(storefront, 'CheckoutPage.tsx')
+      const cartPage = await read(storefront, 'CartPage.tsx')
+      const storefrontApp = await readFile(storefrontAppPath, 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Server: SQL stays out of http.ts; cart never reads catalog tables.
+      assert.doesNotMatch(cartHttp, /db\.prepare/)
+      for (const source of [cartHttp, staleness, cartPacks, cartItems, cartEdits]) {
+        assert.doesNotMatch(source, /FROM (packs|books|grades|schools|items|pack_books)\b/)
+      }
+      assert.doesNotMatch(staleness, /db\.prepare|UPDATE|INSERT|DELETE/)
+      assert.doesNotMatch(cartItems, /SET title/)
+      assert.doesNotMatch(cartPacks, /SET title/)
+      assert.match(staleness, /export function annotateCart/)
+      assert.match(staleness, /export function checkoutBlock/)
+      assert.match(staleness, /cartGoodsTotal\(/)
+      assert.match(cartIndex, /export \{ checkoutBlock \}/)
+      assert.match(cartPacks, /export function acceptPackLinePrice/)
+      assert.match(cartItems, /export function acceptItemLinePrice/)
+      assert.match(cartPacks, /getBrowsePack\(db, line\.packId\)/)
+      assert.match(cartItems, /getLiveItem\(db, line\.itemId\)/)
+      assert.match(cartEdits, /export function priceConflict/)
+      assert.match(cartEdits, /That price changed again\. Review this line\./)
+      assert.match(cartHttp, /router\.post\(\s*'\/cart\/packs\/:lineId\/accept-price'/)
+      assert.match(cartHttp, /router\.post\(\s*'\/cart\/items\/:lineId\/accept-price'/)
+      const checkoutAt = cartHttp.indexOf("'/cart/checkout'")
+      assert.ok(checkoutAt > 0)
+      assert.ok(checkoutAt < cartHttp.indexOf("'/cart/packs/:lineId"))
+      assert.ok(checkoutAt < cartHttp.indexOf("'/cart/items/:lineId"))
+      assert.doesNotMatch(cartHttp, /\/orders|Idempotency-Key/i)
+
+      // Page: the exact delivery copy, no delivery figure, blocked Place Order in place.
+      assert.match(checkoutPage, new RegExp(DELIVERY_COPY))
+      assert.equal(checkoutPage.split(DELIVERY_COPY).length, 2)
+      assert.match(checkoutPage, /checkout-delivery-strip/)
+      assert.ok(
+        checkoutPage.indexOf('checkout-delivery-strip">') < checkoutPage.indexOf('className="cart-goods-total"'),
+        'the delivery strip sits above the goods total',
+      )
+      assert.match(checkoutPage, /formatRupees\(goodsTotal\)/)
+      assert.doesNotMatch(checkoutPage, /delivery(Price|Fee|Charge|Estimate)|deliveryRupees/i)
+      assert.match(checkoutPage, /aria-disabled=\{blocked \? 'true' : undefined\}/)
+      assert.match(checkoutPage, /aria-describedby=\{blocked \? BLOCKED_REASON_ID : undefined\}/)
+      assert.match(checkoutPage, /id=\{BLOCKED_REASON_ID\}/)
+      assert.match(checkoutPage, /button-blocked/)
+      assert.equal((checkoutPage.match(/Place Order/g) ?? []).length, 1)
+      // Blocked uses aria-disabled only, so the button stays focusable.
+      assert.doesNotMatch(checkoutPage, /\sdisabled=\{blocked/)
+      assert.doesNotMatch(checkoutPage, /onClick=\{[^}]*place/i)
+      assert.match(checkoutPage, /className="checkout-banner-region" aria-live="polite"/)
+      assert.match(checkoutPage, /still needs? attention/)
+      assert.match(checkoutPage, /notice notice-danger/)
+      assert.match(checkoutPage, /notice notice-warning/)
+      assert.match(checkoutPage, /Remove this line/)
+      assert.match(checkoutPage, /Accept \{formatRupees\(stale\.lineTotal\)\}/)
+      assert.match(checkoutPage, /\/api\/cart\/checkout/)
+      assert.match(checkoutPage, /\/api\/parents\/me/)
+      assert.match(checkoutPage, /deliveryAddress/)
+      assert.match(checkoutPage, /new AbortController\(\)/)
+      assert.match(checkoutPage, /parseCheckoutBody/)
+      assert.match(checkoutPage, /<textarea/)
+      assert.match(checkoutPage, /role="alert"/)
+      assert.match(checkoutPage, /Cart is Empty/)
+      assert.match(checkoutPage, /refresh\(\)/)
+      assert.match(checkoutPage, /acceptPriceRequest\(line\)/)
+      assert.match(checkoutPage, /tabIndex=\{-1\} ref=\{headingRef\}/)
+      assert.doesNotMatch(checkoutPage, /<input/)
+      assert.doesNotMatch(checkoutPage, /localStorage|sessionStorage|indexedDB/)
+      assert.doesNotMatch(checkoutPage, /Idempotency-Key|\/api\/orders/)
+      assert.doesNotMatch(checkoutPage, /role="dialog"|modal/i)
+
+      // Route and entry point.
+      const gated = storefrontApp.match(/<Route element=\{<AuthGate \/>\}>([\s\S]*?)<\/Route>/)?.[1]
+      assert.ok(gated)
+      assert.match(gated, /path="cart\/checkout" element=\{<CheckoutPage \/>\}/)
+      assert.match(cartPage, /<Link className="button-primary cart-checkout" to="\/cart\/checkout">/)
+      assert.ok(
+        cartPage.indexOf('to="/cart/checkout"') > cartPage.indexOf('lines.length === 0 ?'),
+        'Checkout only renders in the non-empty branch',
+      )
+
+      // Styles.
+      const blockedRule = cssRule(baseCss, '.button-primary.button-blocked')
+      assert.match(blockedRule, /var\(--color-surface-sunken\)/)
+      assert.match(blockedRule, /var\(--color-text-secondary\)/)
+      assert.match(blockedRule, /var\(--space-edge-hairline\) solid var\(--color-border-default\)/)
+      assert.match(blockedRule, /box-shadow: none/)
+      const strip = cssRule(baseCss, '.checkout-delivery-strip')
+      assert.match(strip, /var\(--color-accent-quiet\)/)
+      assert.match(strip, /var\(--space-edge-hairline\) solid var\(--color-border-default\)/)
+      const notice = cssRule(baseCss, '.notice')
+      assert.match(notice, /padding: 13px 15px/)
+      assert.match(notice, /var\(--radius-md\)/)
+      assert.match(notice, /var\(--space-edge-strong\)/)
+      assert.match(cssRule(baseCss, '.notice-danger'), /var\(--color-danger-tint\)/)
+      assert.match(cssRule(baseCss, '.notice-danger'), /var\(--color-danger\)/)
+      assert.match(cssRule(baseCss, '.notice-warning'), /var\(--color-warn-tint\)/)
+      assert.match(cssRule(baseCss, '.notice-warning'), /var\(--color-warning\)/)
+      assert.match(cssRule(baseCss, '.notice-actions'), /margin-top: 13px/)
+      // Both notice buttons (Accept and Remove this line) keep the 44px touch minimum.
+      const noticeButtons = baseCss.match(
+        /\.notice-actions > \.button-primary,\s*\.notice-actions > \.button-secondary\s*\{([^}]*)\}/,
+      )?.[1]
+      assert.ok(noticeButtons, 'missing the shared notice button rule')
+      assert.match(noticeButtons, /min-height: var\(--space-touch-min\)/)
+      assert.ok(cssRule(baseCss, '.checkout-note-control'))
     })
   })
 })
