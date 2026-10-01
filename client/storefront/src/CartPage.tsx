@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react'
+import { Link } from 'react-router'
 import { Spinner, formatRupees } from '@booklist/ui'
 import { useCartBadge, type CartLine } from './cart'
 import { compositionMeta, parseCartBody, type CartSnapshot } from './cartLines'
@@ -346,6 +347,9 @@ export function CartPage() {
               {formatRupees(goodsTotal)}
             </span>
           </div>
+          <Link className="button-primary cart-checkout" to="/cart/checkout">
+            Checkout
+          </Link>
         </>
       )}
     </section>

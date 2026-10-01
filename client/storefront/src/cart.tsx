@@ -40,6 +40,13 @@ export type CartItemLine = {
 
 export type CartLine = CartPackLine | CartItemLine
 
+/** Checkout's verdict on one line against the live catalog; unavailable wins over repriced. */
+export type LineStale = null | { kind: 'unavailable' } | { kind: 'repriced'; lineTotal: number }
+
+export type CheckoutPackLine = CartPackLine & { stale: LineStale }
+export type CheckoutItemLine = CartItemLine & { stale: LineStale }
+export type CheckoutLine = CheckoutPackLine | CheckoutItemLine
+
 type CartBadge = {
   count: number
   refresh: () => void

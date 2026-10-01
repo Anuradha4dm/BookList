@@ -71,12 +71,12 @@ development_status:
   epic-3: in-progress
   3-1-add-a-configured-pack-to-the-cart: done
   3-2-add-individual-items-to-the-same-cart: done
-  3-3-a-cart-that-persists-totals-and-can-be-emptied: review
+  3-3-a-cart-that-persists-totals-and-can-be-emptied: done
   epic-3-retrospective: optional
 
   # Epic 4: Capture the order and work the morning list
-  epic-4: backlog
-  4-1-checkout-address-delivery-line-note-and-stale-lines: backlog
+  epic-4: in-progress
+  4-1-checkout-address-delivery-line-note-and-stale-lines: review
   4-2-place-order-snapshot-number-one-tap: backlog
   4-3-my-orders-pipeline-cancel-and-reason: backlog
   4-4-admin-orders-one-list-open-and-past: backlog

@@ -3,6 +3,7 @@ import { AccountPage } from './AccountPage'
 import { AuthGate } from './AuthGate'
 import { BrowsePage } from './BrowsePage'
 import { CartPage } from './CartPage'
+import { CheckoutPage } from './CheckoutPage'
 import { ItemsPage } from './ItemsPage'
 import { PackPage } from './PackPage'
 import { Shell } from './Shell'
@@ -29,6 +30,7 @@ export const router = createBrowserRouter(
         <Route path="packs/:id" element={<PackPage />} />
         <Route element={<AuthGate />}>
           <Route path="cart" element={<CartPage />} />
+          <Route path="cart/checkout" element={<CheckoutPage />} />
           <Route path="orders" element={<Page title="Orders" />} />
           <Route path="account" element={<AccountPage />} />
         </Route>

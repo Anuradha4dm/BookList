@@ -1,4 +1,10 @@
-import type { CartLine, CartPackLine, CartPackMember } from './cart'
+import type {
+  CartLine,
+  CartPackLine,
+  CartPackMember,
+  CheckoutLine,
+  LineStale,
+} from './cart'
 
 /** What `GET /api/cart` answers: every line and the server-computed goods total. */
 export type CartSnapshot = {
@@ -102,6 +108,47 @@ export function parseCartBody(body: unknown): CartSnapshot | undefined {
   return { lines, goodsTotal: body.goodsTotal }
 }
 
+/** What `GET /api/cart/checkout` answers: the cart lines, each with its staleness flag. */
+export type CheckoutSnapshot = {
+  lines: CheckoutLine[]
+  goodsTotal: number
+  attentionCount: number
+}
+
+function parseStale(value: unknown): LineStale | undefined {
+  if (value === null) return null
+  if (!isRecord(value)) return undefined
+  if (value.kind === 'unavailable') return { kind: 'unavailable' }
+  if (value.kind === 'repriced' && typeof value.lineTotal === 'number') {
+    return { kind: 'repriced', lineTotal: value.lineTotal }
+  }
+  return undefined
+}
+
+/**
+ * Parses a `GET /api/cart/checkout` body as a whole. Every line must parse as a cart line
+ * and carry a well-formed `stale` (null included); otherwise the whole parse fails.
+ */
+export function parseCheckoutBody(body: unknown): CheckoutSnapshot | undefined {
+  if (
+    !isRecord(body) ||
+    !Array.isArray(body.lines) ||
+    typeof body.goodsTotal !== 'number' ||
+    typeof body.attentionCount !== 'number'
+  ) {
+    return undefined
+  }
+  const lines: CheckoutLine[] = []
+  for (const entry of body.lines) {
+    const line = parseLine(entry)
+    if (!line || !isRecord(entry) || !('stale' in entry)) return undefined
+    const stale = parseStale(entry.stale)
+    if (stale === undefined) return undefined
+    lines.push({ ...line, stale })
+  }
+  return { lines, goodsTotal: body.goodsTotal, attentionCount: body.attentionCount }
+}
+
 /** `6 of 8 titles · Atlas ×2`: included count, then each included title above one copy, in member order. */
 export function compositionMeta(line: CartPackLine): string {
   const included = line.members.filter((member) => member.included)
@@ -110,4 +157,25 @@ export function compositionMeta(line: CartPackLine): string {
     if (member.quantity > 1) meta += ` · ${member.title} ×${member.quantity}`
   }
   return meta
+}
+
+/** The accept-price call for a repriced line: the figure the parent saw, nothing else. */
+export type AcceptPriceRequest = {
+  url: string
+  body: { lineTotal: number } | { unitPrice: number }
+}
+
+/**
+ * Builds the accept-price request for one checkout line. Null unless the line is repriced,
+ * and null for an item whose live line total does not divide into a whole-rupee unit price.
+ */
+export function acceptPriceRequest(line: CheckoutLine): AcceptPriceRequest | null {
+  const stale = line.stale
+  if (!stale || stale.kind !== 'repriced') return null
+  if (line.kind === 'pack') {
+    return { url: `/api/cart/packs/${line.id}/accept-price`, body: { lineTotal: stale.lineTotal } }
+  }
+  const unitPrice = stale.lineTotal / line.quantity
+  if (!Number.isSafeInteger(unitPrice)) return null
+  return { url: `/api/cart/items/${line.id}/accept-price`, body: { unitPrice } }
 }
