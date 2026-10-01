@@ -2,6 +2,7 @@ import express, { Router, type ErrorRequestHandler } from 'express'
 import { createCartRouter } from '../cart/index.js'
 import { createCatalogRouter } from '../catalog/index.js'
 import { createIdentityRouter } from '../identity/index.js'
+import { createOrdersRouter } from '../orders/index.js'
 import type { Db } from './db.js'
 import type { Env } from './env.js'
 
@@ -31,6 +32,7 @@ export function createApiRouter(db: Db, env: Env): Router {
   router.use(createIdentityRouter(db, env))
   router.use(createCatalogRouter(db, env))
   router.use(createCartRouter(db, env))
+  router.use(createOrdersRouter(db, env))
 
   router.use((req, res) => {
     res.status(404).json({

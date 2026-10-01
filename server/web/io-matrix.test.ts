@@ -61,6 +61,8 @@ import {
 import { formatRupees } from '../../client/ui/money.ts'
 import { toStorefrontPack } from '../catalog/packs.ts'
 import { checkoutBlock } from '../cart/index.ts'
+import { runMigrations } from '../db/migrations/run.ts'
+import { listParentOrders, placeOrder } from '../orders/place.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -175,6 +177,8 @@ const CART_TOTALS_PORT = String(18781)
 const cartTotalsBaseUrl = `http://127.0.0.1:${CART_TOTALS_PORT}`
 const CHECKOUT_PORT = String(18782)
 const checkoutBaseUrl = `http://127.0.0.1:${CHECKOUT_PORT}`
+const ORDERS_PORT = String(18783)
+const ordersBaseUrl = `http://127.0.0.1:${ORDERS_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -329,7 +333,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 8)
+        assert.equal(applied.n, 9)
       } finally {
         db.close()
       }
@@ -2266,7 +2270,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 8)
+          assert.equal(applied.n, 9)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -2387,6 +2391,8 @@ describe('I/O & edge-case matrix', () => {
         ...(await walkFiles(path.join(serverRoot, 'web'))),
         ...(await walkFiles(path.join(serverRoot, 'identity'))),
         ...(await walkFiles(path.join(serverRoot, 'catalog'))),
+        ...(await walkFiles(path.join(serverRoot, 'cart'))),
+        ...(await walkFiles(path.join(serverRoot, 'orders'))),
       ]
       for (const file of files) {
         if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
@@ -8335,10 +8341,10 @@ describe('I/O & edge-case matrix', () => {
       assert.match(checkoutPage, /aria-describedby=\{blocked \? BLOCKED_REASON_ID : undefined\}/)
       assert.match(checkoutPage, /id=\{BLOCKED_REASON_ID\}/)
       assert.match(checkoutPage, /button-blocked/)
+      // Story 4.2 wires Place Order; the label still appears exactly once.
       assert.equal((checkoutPage.match(/Place Order/g) ?? []).length, 1)
       // Blocked uses aria-disabled only, so the button stays focusable.
       assert.doesNotMatch(checkoutPage, /\sdisabled=\{blocked/)
-      assert.doesNotMatch(checkoutPage, /onClick=\{[^}]*place/i)
       assert.match(checkoutPage, /className="checkout-banner-region" aria-live="polite"/)
       assert.match(checkoutPage, /still needs? attention/)
       assert.match(checkoutPage, /notice notice-danger/)
@@ -8358,7 +8364,6 @@ describe('I/O & edge-case matrix', () => {
       assert.match(checkoutPage, /tabIndex=\{-1\} ref=\{headingRef\}/)
       assert.doesNotMatch(checkoutPage, /<input/)
       assert.doesNotMatch(checkoutPage, /localStorage|sessionStorage|indexedDB/)
-      assert.doesNotMatch(checkoutPage, /Idempotency-Key|\/api\/orders/)
       assert.doesNotMatch(checkoutPage, /role="dialog"|modal/i)
 
       // Route and entry point.
@@ -8396,6 +8401,710 @@ describe('I/O & edge-case matrix', () => {
       assert.ok(noticeButtons, 'missing the shared notice button rule')
       assert.match(noticeButtons, /min-height: var\(--space-touch-min\)/)
       assert.ok(cssRule(baseCss, '.checkout-note-control'))
+    })
+  })
+
+  describe('Place Order — snapshot, number, one tap', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parentSerial = 0
+
+    type OrderJson = {
+      id: number
+      publicNumber: number
+      status: string
+      goodsTotal: number
+      placedAt: string
+    }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+    type Parent = { cookie: string; id: number; name: string }
+    type Titled = { id: number; title: string }
+    type Seeded = {
+      parent: Parent
+      atlas: Titled
+      reader: Titled
+      workbook: Titled
+      item: Titled
+      packId: number
+      packName: string
+      gradeName: string
+    }
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${ordersBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(
+      method: 'POST' | 'PATCH' | 'DELETE',
+      pathName: string,
+      body: unknown,
+      expected: number,
+    ): Promise<unknown> {
+      const response = await fetch(`${ordersBaseUrl}${pathName}`, {
+        method,
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      assert.equal(response.status, expected, `${method} ${pathName}: ${response.status}`)
+      return expected === 204 ? undefined : await response.json()
+    }
+
+    function suffix(tag: string): string {
+      return `${Date.now()}-${tag}`
+    }
+
+    async function registerParent(tag: string, secondPhone?: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `orders.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const name = `Orders ${tag}`
+      const response = await fetch(`${ordersBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          deliveryAddress: '12 Temple Road, Nugegoda',
+          whatsapp: '0771234567',
+          ...(secondPhone === undefined ? {} : { secondPhone }),
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        const row = db.prepare('SELECT id FROM parents WHERE email = ?').get(email) as
+          | { id: number }
+          | undefined
+        assert.ok(row)
+        return { cookie: cookieHeader(cookie), id: row.id, name }
+      } finally {
+        db.close()
+      }
+    }
+
+    async function addItem(cookie: string, itemId: number, quantity: number): Promise<void> {
+      const response = await fetch(`${ordersBaseUrl}/api/cart/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ itemId, quantity }),
+      })
+      assert.ok(response.status === 201 || response.status === 200, `add item ${response.status}`)
+    }
+
+    /**
+     * Own school and grade per seed. Atlas x2 @1,500 and Reader x1 @800 ticked, Workbook @900
+     * unticked; an item x3 @120. Goods total 4,160. A given parent reuses the catalog rows.
+     */
+    async function seed(tag: string, parent?: Parent): Promise<Seeded> {
+      const s = suffix(tag)
+      const schoolId = ((await adminSend('POST', '/api/admin/schools', catalogNameBody(`Orders school ${s}`), 201)) as { id: number }).id
+      const gradeName = `Grade ${s}`
+      const gradeId = ((await adminSend('POST', '/api/admin/grades', catalogNameBody(gradeName), 201)) as { id: number }).id
+      const atlas = (await adminSend('POST', '/api/admin/books', bookBody(`Atlas ${s}`, 1500), 201)) as Titled
+      const reader = (await adminSend('POST', '/api/admin/books', bookBody(`Reader ${s}`, 800), 201)) as Titled
+      const workbook = (await adminSend('POST', '/api/admin/books', bookBody(`Workbook ${s}`, 900), 201)) as Titled
+      const packName = `Orders pack ${s}`
+      const pack = (await adminSend(
+        'POST',
+        '/api/admin/packs',
+        packCreateBody(packName, schoolId, gradeId, 'Orders', [atlas.id, reader.id, workbook.id]),
+        201,
+      )) as { id: number }
+      const item = (await adminSend('POST', '/api/admin/items', itemBody(`Pencil ${s}`, 'Stationery', 120), 201)) as Titled
+      const owner = parent ?? (await registerParent(tag))
+
+      const packResponse = await fetch(`${ordersBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${atlas.id}:2,${reader.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      await addItem(owner.cookie, item.id, 3)
+      return { parent: owner, atlas, reader, workbook, item, packId: pack.id, packName, gradeName }
+    }
+
+    function place(
+      cookie: string | undefined,
+      key: string | undefined,
+      body: unknown = {},
+    ): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      if (key !== undefined) headers['Idempotency-Key'] = key
+      return fetch(`${ordersBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      })
+    }
+
+    async function listOrders(cookie: string): Promise<OrderJson[]> {
+      const response = await fetch(`${ordersBaseUrl}/api/orders`, { headers: { cookie } })
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      return ((await response.json()) as { orders: OrderJson[] }).orders
+    }
+
+    async function cartLineCount(cookie: string): Promise<number> {
+      const response = await fetch(`${ordersBaseUrl}/api/cart`, { headers: { cookie } })
+      assert.equal(response.status, 200)
+      return ((await response.json()) as { lines: unknown[] }).lines.length
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    function orderCount(parentId: number): number {
+      return readDb(
+        (db) =>
+          (db.prepare('SELECT COUNT(*) AS n FROM orders WHERE parent_id = ?').get(parentId) as { n: number }).n,
+      )
+    }
+
+    function cartRows(parentId: number): unknown {
+      return readDb((db) => ({
+        packs: db.prepare('SELECT * FROM cart_pack_lines WHERE parent_id = ? ORDER BY id').all(parentId),
+        members: db
+          .prepare(
+            `SELECT m.* FROM cart_pack_line_members m
+             JOIN cart_pack_lines l ON l.id = m.line_id
+             WHERE l.parent_id = ?
+             ORDER BY m.line_id, m.book_id`,
+          )
+          .all(parentId),
+        items: db.prepare('SELECT * FROM cart_item_lines WHERE parent_id = ? ORDER BY id').all(parentId),
+      }))
+    }
+
+    async function expectRefused(
+      response: Response,
+      status: number,
+      code: string,
+      message?: string,
+    ): Promise<void> {
+      assert.equal(response.status, status)
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, code)
+      if (message !== undefined) assert.equal(body.error.message, message)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-orders-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ORDERS_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    let first: Seeded
+    let firstOrder: OrderJson
+
+    it('place: snapshots the cart and the account, numbers it 1001, and empties the cart', async () => {
+      first = await seed('place')
+      const response = await place(first.parent.cookie, 'k1', {
+        note: ' Gate 2 ',
+        deliveryAddress: 'X',
+        whatsapp: '0700000000',
+        goodsTotal: 1,
+      })
+      assert.equal(response.status, 201)
+      const body = (await response.json()) as { order: OrderJson }
+      assert.deepEqual(Object.keys(body), ['order'])
+      firstOrder = body.order
+      assert.deepEqual(Object.keys(firstOrder).sort(), ['goodsTotal', 'id', 'placedAt', 'publicNumber', 'status'])
+      assert.equal(firstOrder.publicNumber, 1001)
+      assert.equal(firstOrder.status, 'Order Is Placed')
+      assert.equal(firstOrder.goodsTotal, 4160)
+      assert.equal(new Date(firstOrder.placedAt).toISOString(), firstOrder.placedAt)
+
+      const snapshot = readDb((db) => {
+        const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(firstOrder.id) as Record<string, unknown>
+        const packs = db
+          .prepare('SELECT * FROM order_pack_lines WHERE order_id = ? ORDER BY position')
+          .all(firstOrder.id) as Array<Record<string, unknown>>
+        const books = db
+          .prepare(
+            `SELECT b.* FROM order_pack_line_books b
+             JOIN order_pack_lines l ON l.id = b.line_id
+             WHERE l.order_id = ?
+             ORDER BY b.book_id`,
+          )
+          .all(firstOrder.id) as Array<Record<string, unknown>>
+        const items = db
+          .prepare('SELECT * FROM order_item_lines WHERE order_id = ? ORDER BY position')
+          .all(firstOrder.id) as Array<Record<string, unknown>>
+        return { order, packs, books, items }
+      })
+      assert.equal(snapshot.order.parent_id, first.parent.id)
+      assert.equal(snapshot.order.idempotency_key, 'k1')
+      assert.equal(snapshot.order.status, 'Order Is Placed')
+      assert.equal(snapshot.order.parent_name, first.parent.name)
+      // The address comes from the account, never the body.
+      assert.equal(snapshot.order.delivery_address, '12 Temple Road, Nugegoda')
+      assert.equal(snapshot.order.whatsapp, '+94771234567')
+      assert.equal(snapshot.order.second_phone, null)
+      assert.equal(snapshot.order.parent_delivery_note, 'Gate 2')
+      assert.equal(snapshot.order.goods_total_rupees, 4160)
+      assert.equal(snapshot.order.placed_at, firstOrder.placedAt)
+
+      assert.equal(snapshot.packs.length, 1)
+      assert.equal(snapshot.packs[0].pack_id, first.packId)
+      assert.equal(snapshot.packs[0].pack_name, first.packName)
+      assert.equal(snapshot.packs[0].label, `Pack 1 of ${first.gradeName}`)
+      assert.equal(snapshot.packs[0].grade_name, first.gradeName)
+      assert.equal(snapshot.packs[0].line_total_rupees, 3800)
+      // Included members only: the unticked Workbook is not part of the order.
+      assert.deepEqual(
+        snapshot.books.map((book) => [book.book_id, book.title, book.unit_price_rupees, book.quantity]),
+        [
+          [first.atlas.id, first.atlas.title, 1500, 2],
+          [first.reader.id, first.reader.title, 800, 1],
+        ],
+      )
+      assert.equal(snapshot.items.length, 1)
+      assert.equal(snapshot.items[0].item_id, first.item.id)
+      assert.equal(snapshot.items[0].title, first.item.title)
+      assert.equal(snapshot.items[0].unit_price_rupees, 120)
+      assert.equal(snapshot.items[0].quantity, 3)
+      assert.equal(snapshot.items[0].line_total_rupees, 360)
+
+      assert.equal(await cartLineCount(first.parent.cookie), 0)
+      assert.deepEqual(cartRows(first.parent.id), { packs: [], members: [], items: [] })
+    })
+
+    it('replay: the same parent and key answer 200 with the same order, even with a new cart', async () => {
+      await addItem(first.parent.cookie, first.item.id, 1)
+      const before = cartRows(first.parent.id)
+      const response = await place(first.parent.cookie, 'k1', { note: 'different' })
+      assert.equal(response.status, 200)
+      assert.deepEqual(((await response.json()) as { order: OrderJson }).order, firstOrder)
+      assert.equal(orderCount(first.parent.id), 1)
+      assert.deepEqual(cartRows(first.parent.id), before)
+      assert.equal(await cartLineCount(first.parent.cookie), 1)
+    })
+
+    it('sequence and scoped keys: a second parent reusing k1 gets a new order numbered 1002', async () => {
+      const second = await seed('sequence')
+      const response = await place(second.parent.cookie, 'k1', { note: '   ' })
+      assert.equal(response.status, 201)
+      const order = ((await response.json()) as { order: OrderJson }).order
+      assert.equal(order.publicNumber, 1002)
+      assert.notEqual(order.id, firstOrder.id)
+      assert.equal(orderCount(second.parent.id), 1)
+      assert.equal(orderCount(first.parent.id), 1)
+      const note = readDb(
+        (db) =>
+          (db.prepare('SELECT parent_delivery_note AS note FROM orders WHERE id = ?').get(order.id) as { note: string | null }).note,
+      )
+      assert.equal(note, null)
+    })
+
+    it('double tap: two concurrent places with one key make exactly one order', async () => {
+      const seeded = await seed('double')
+      const [a, b] = await Promise.all([
+        place(seeded.parent.cookie, 'tap-key', {}),
+        place(seeded.parent.cookie, 'tap-key', {}),
+      ])
+      assert.deepEqual([a.status, b.status].sort(), [200, 201])
+      const orderA = ((await a.json()) as { order: OrderJson }).order
+      const orderB = ((await b.json()) as { order: OrderJson }).order
+      assert.deepEqual(orderA, orderB)
+      assert.equal(orderCount(seeded.parent.id), 1)
+      assert.equal(await cartLineCount(seeded.parent.cookie), 0)
+    })
+
+    it('stale: a flagged line refuses Place with 409 and leaves the cart alone', async () => {
+      const seeded = await seed('stale')
+      await adminSend('PATCH', booksItemPath(seeded.atlas.id), bookBody(seeded.atlas.title, 1600), 200)
+      const before = cartRows(seeded.parent.id)
+      await expectRefused(
+        await place(seeded.parent.cookie, 'stale-key'),
+        409,
+        'checkout_blocked',
+        '1 line still needs attention.',
+      )
+      await adminSend('POST', itemsArchivePath(seeded.item.id), undefined, 200)
+      await expectRefused(
+        await place(seeded.parent.cookie, 'stale-key'),
+        409,
+        'checkout_blocked',
+        '2 lines still need attention.',
+      )
+      assert.equal(orderCount(seeded.parent.id), 0)
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+    })
+
+    it('empty: a cart with no lines is a 409 and makes no order', async () => {
+      const parent = await registerParent('empty')
+      await expectRefused(await place(parent.cookie, 'empty-key'), 409, 'cart_empty', 'Your cart is empty.')
+      assert.equal(orderCount(parent.id), 0)
+    })
+
+    it('bad key or note: 400 invalid_input and nothing is written', async () => {
+      const seeded = await seed('bad')
+      const before = cartRows(seeded.parent.id)
+      const attempts: Array<[string | undefined, unknown]> = [
+        [undefined, {}],
+        ['', {}],
+        ['x'.repeat(101), {}],
+        ['badékey', {}],
+        ['ok-key', { note: 'n'.repeat(1001) }],
+        ['ok-key', { note: 42 }],
+        ['ok-key', { note: null }],
+        ['ok-key', { note: ['Gate 2'] }],
+      ]
+      for (const [key, body] of attempts) {
+        const headers: Record<string, string> = { 'content-type': 'application/json', cookie: seeded.parent.cookie }
+        // A non-ASCII header value cannot go through fetch, so send it as raw bytes.
+        if (key !== undefined && /[^\x00-\x7f]/.test(key)) {
+          const response = await rawPost(key, seeded.parent.cookie)
+          assert.equal(response.status, 400, 'non-ASCII key')
+          continue
+        }
+        if (key !== undefined) headers['Idempotency-Key'] = key
+        const response = await fetch(`${ordersBaseUrl}/api/orders`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        })
+        await expectRefused(response, 400, 'invalid_input')
+      }
+      assert.equal(orderCount(seeded.parent.id), 0)
+      assert.deepEqual(cartRows(seeded.parent.id), before)
+
+      // The limits themselves are accepted: a 100-character key and a 1000-character note.
+      const response = await place(seeded.parent.cookie, 'k'.repeat(100), { note: 'n'.repeat(1000) })
+      assert.equal(response.status, 201)
+    })
+
+    async function rawPost(key: string, cookie: string): Promise<{ status: number }> {
+      const { request } = await import('node:http')
+      return await new Promise((resolve, reject) => {
+        const req = request(
+          {
+            host: '127.0.0.1',
+            port: Number(ORDERS_PORT),
+            path: '/api/orders',
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie },
+          },
+          (res) => {
+            res.resume()
+            res.on('end', () => resolve({ status: res.statusCode ?? 0 }))
+          },
+        )
+        req.on('error', reject)
+        // Raw latin1 bytes bypass Node's header validation on the client side.
+        req.removeHeader('content-length')
+        req.setHeader('Idempotency-Key', Buffer.from(key, 'utf8').toString('latin1'))
+        req.end('{}')
+      })
+    }
+
+    it('mid-transaction failure: an insert that throws after the order row rolls everything back', async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), 'booklist-orders-txn-'))
+      const db = new Database(path.join(dir, 'booklist.db'))
+      try {
+        runMigrations(db)
+        db.pragma('foreign_keys = ON')
+        const now = new Date().toISOString()
+        const parentId = Number(
+          db
+            .prepare(
+              `INSERT INTO parents (email, password_hash, name, delivery_address, whatsapp, second_phone, created_at)
+               VALUES ('txn@example.com', 'x', 'Txn Parent', '1 Lake Road', '0771234567', NULL, ?)`,
+            )
+            .run(now).lastInsertRowid,
+        )
+        const itemId = Number(
+          db
+            .prepare(`INSERT INTO items (title, description, price, created_at) VALUES ('Eraser', 'Stationery', 50, ?)`)
+            .run(now).lastInsertRowid,
+        )
+        db.prepare(
+          `INSERT INTO cart_item_lines (parent_id, item_id, quantity, title, unit_price, created_at)
+           VALUES (?, ?, 2, 'Eraser', 50, ?)`,
+        ).run(parentId, itemId, now)
+        db.exec(`
+          CREATE TRIGGER order_item_lines_fail BEFORE INSERT ON order_item_lines
+          BEGIN
+            SELECT RAISE(ABORT, 'forced failure');
+          END
+        `)
+        assert.throws(() => placeOrder(db, parentId, 'txn-key', 'note'), /forced failure/)
+        const count = (table: string) =>
+          (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+        assert.equal(count('orders'), 0)
+        assert.equal(count('order_pack_lines'), 0)
+        assert.equal(count('order_item_lines'), 0)
+        assert.equal(count('cart_item_lines'), 1)
+
+        // With the failure gone the same Place goes through and empties the cart.
+        db.exec('DROP TRIGGER order_item_lines_fail')
+        const placed = placeOrder(db, parentId, 'txn-key', null)
+        assert.ok(placed.ok)
+        assert.equal(placed.replayed, false)
+        assert.equal(placed.order.publicNumber, 1001)
+        assert.equal(count('orders'), 1)
+        assert.equal(count('cart_item_lines'), 0)
+        assert.deepEqual(listParentOrders(db, parentId), [placed.order])
+      } finally {
+        db.close()
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('auth: 401 without a cookie and 403 for the admin on POST and GET', async () => {
+      const total = readDb((db) => (db.prepare('SELECT COUNT(*) AS n FROM orders').get() as { n: number }).n)
+      await expectRefused(await place(undefined, 'auth-key'), 401, 'unauthenticated')
+      await expectRefused(
+        await place(adminCookie, 'auth-key'),
+        403,
+        'forbidden',
+        'Only parents can place orders.',
+      )
+      await expectRefused(await fetch(`${ordersBaseUrl}/api/orders`), 401, 'unauthenticated')
+      await expectRefused(
+        await fetch(`${ordersBaseUrl}/api/orders`, { headers: { cookie: adminCookie } }),
+        403,
+        'forbidden',
+      )
+      assert.equal(
+        readDb((db) => (db.prepare('SELECT COUNT(*) AS n FROM orders').get() as { n: number }).n),
+        total,
+      )
+    })
+
+    it('second phone: the snapshot keeps the normalized fallback number from the account', async () => {
+      const parent = await registerParent('second-phone', '071-234 5678')
+      await seed('second-phone', parent)
+      const response = await place(parent.cookie, 'second-phone-key')
+      assert.equal(response.status, 201)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const order = ((await response.json()) as { order: OrderJson }).order
+      const row = readDb(
+        (db) =>
+          db.prepare('SELECT whatsapp, second_phone FROM orders WHERE id = ?').get(order.id) as {
+            whatsapp: string
+            second_phone: string | null
+          },
+      )
+      assert.deepEqual(row, { whatsapp: '+94771234567', second_phone: '+94712345678' })
+    })
+
+    it('snapshot: repricing and renaming in the catalog after Place never changes the order', async () => {
+      const seeded = await seed('immutable')
+      const response = await place(seeded.parent.cookie, 'immutable-key')
+      assert.equal(response.status, 201)
+      const order = ((await response.json()) as { order: OrderJson }).order
+      const stored = () =>
+        readDb((db) => ({
+          order: db
+            .prepare('SELECT goods_total_rupees, parent_name, delivery_address FROM orders WHERE id = ?')
+            .get(order.id),
+          packs: db
+            .prepare('SELECT pack_name, label, grade_name, line_total_rupees FROM order_pack_lines WHERE order_id = ?')
+            .all(order.id),
+          books: db
+            .prepare(
+              `SELECT b.book_id, b.title, b.unit_price_rupees, b.quantity FROM order_pack_line_books b
+               JOIN order_pack_lines l ON l.id = b.line_id
+               WHERE l.order_id = ?
+               ORDER BY b.book_id`,
+            )
+            .all(order.id),
+          items: db
+            .prepare('SELECT title, unit_price_rupees, quantity, line_total_rupees FROM order_item_lines WHERE order_id = ?')
+            .all(order.id),
+        }))
+      const before = stored()
+      assert.deepEqual((before.packs as Array<{ pack_name: string }>)[0].pack_name, seeded.packName)
+
+      await adminSend('PATCH', booksItemPath(seeded.atlas.id), bookBody(`Renamed ${seeded.atlas.title}`, 1750), 200)
+      await adminSend('PATCH', itemsItemPath(seeded.item.id), itemBody(`Renamed ${seeded.item.title}`, 'Stationery', 175), 200)
+      await adminSend(
+        'PATCH',
+        packsItemPath(seeded.packId),
+        packPatchBody(`Renamed ${seeded.packName}`, 'Orders', [seeded.atlas.id, seeded.reader.id, seeded.workbook.id]),
+        200,
+      )
+
+      assert.deepEqual(stored(), before)
+      assert.deepEqual(
+        (await listOrders(seeded.parent.cookie)).find((entry) => entry.id === order.id),
+        order,
+      )
+      assert.equal(order.goodsTotal, 4160)
+    })
+
+    it("list: a parent sees only their own orders, newest first", async () => {
+      const seeded = await seed('list')
+      assert.deepEqual(await listOrders(seeded.parent.cookie), [])
+      const older = ((await (await place(seeded.parent.cookie, 'list-1')).json()) as { order: OrderJson }).order
+      await seed('list-again', seeded.parent)
+      const newer = ((await (await place(seeded.parent.cookie, 'list-2')).json()) as { order: OrderJson }).order
+      assert.ok(newer.publicNumber > older.publicNumber)
+      assert.deepEqual(await listOrders(seeded.parent.cookie), [newer, older])
+      assert.deepEqual(await listOrders(first.parent.cookie), [firstOrder])
+    })
+
+    it('wires the orders module, Place Order, My Orders, the route, and styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const ordersHttp = await read(ordersDir, 'http.ts')
+      const ordersIndex = await read(ordersDir, 'index.ts')
+      const ordersPlace = await read(ordersDir, 'place.ts')
+      const cartIndex = await read(serverRoot, 'cart', 'index.ts')
+      const cartEmpty = await read(serverRoot, 'cart', 'empty.ts')
+      const api = await read(serverRoot, 'web', 'api.ts')
+      const runMigrationsSource = await read(serverRoot, 'db', 'migrations', 'run.ts')
+      const migration = await read(serverRoot, 'db', 'migrations', '009_orders_orders_and_lines.sql')
+      const storefront = path.join(repoRoot, 'client', 'storefront', 'src')
+      const checkoutPage = await read(storefront, 'CheckoutPage.tsx')
+      const ordersPage = await read(storefront, 'OrdersPage.tsx')
+      const storefrontApp = await readFile(storefrontAppPath, 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Server: SQL stays in place.ts; orders never reads cart, catalog, or identity tables.
+      assert.doesNotMatch(ordersHttp, /db\.prepare/)
+      for (const file of await walkFiles(ordersDir)) {
+        if (!file.endsWith('.ts')) continue
+        const source = await readFile(file, 'utf8')
+        assert.doesNotMatch(
+          source,
+          /(FROM|JOIN|INTO|UPDATE)\s+(cart_\w+|packs|books|grades|schools|items|pack_books|parents|admins|sessions)\b/i,
+          `foreign table in ${file}`,
+        )
+      }
+      assert.match(ordersIndex, /export \{ createOrdersRouter \}/)
+      assert.match(ordersPlace, /from '\.\.\/cart\/index\.js'/)
+      assert.match(ordersPlace, /getBrowsePack\(db, line\.packId\)/)
+      assert.match(ordersPlace, /findParentById\(db, parentId\)/)
+      assert.match(ordersPlace, /emptyCart\(db, parentId\)/)
+      assert.match(ordersPlace, /checkoutBlock\(db, parentId\)/)
+      assert.match(ordersPlace, /cartGoodsTotal\(packLines, itemLines\)/)
+      assert.match(ordersPlace, /db\.transaction\(/)
+      assert.match(ordersHttp, /Only parents can place orders\./)
+      assert.match(ordersHttp, /enableForeignKeys\(db\)/)
+      assert.match(ordersHttp, /Idempotency-Key/)
+      assert.match(cartIndex, /export \{ emptyCart \}/)
+      assert.match(cartEmpty, /export function emptyCart/)
+      assert.match(api, /router\.use\(createOrdersRouter\(db, env\)\)/)
+      assert.ok(api.indexOf('createCartRouter(db, env)') < api.indexOf('createOrdersRouter(db, env)'))
+      assert.ok(api.indexOf('createOrdersRouter(db, env)') < api.indexOf('router.use((req, res)'))
+      assert.match(runMigrationsSource, /009_orders_orders_and_lines\.sql/)
+      assert.match(migration, /UNIQUE \(public_number\)/)
+      assert.match(migration, /UNIQUE \(parent_id, idempotency_key\)/)
+      for (const status of [
+        'Order Is Placed',
+        'Order Confirmed',
+        'Processing',
+        'Packing The Order',
+        'Ready To Deliver',
+        'On Delivery Partner',
+        'Delivered',
+        'Cancelled',
+      ]) {
+        assert.match(migration, new RegExp(`'${status}'`))
+      }
+      assert.doesNotMatch(migration, /delivery_price|payable/)
+
+      // Place Order: one key per mount, the existing lock, then refresh and navigate.
+      assert.match(checkoutPage, /crypto\.randomUUID\(\)/)
+      assert.match(checkoutPage, /useRef<string \| null>\(null\)/)
+      assert.match(checkoutPage, /'Idempotency-Key': ensurePlaceKey\(\)/)
+      assert.doesNotMatch(checkoutPage, /placeKey\.current \?\? ''/)
+      assert.match(checkoutPage, /fetch\('\/api\/orders'/)
+      assert.match(checkoutPage, /void withLock\(async \(\) => \{\s*let response: Response\s*try \{\s*response = await fetch\('\/api\/orders'/)
+      assert.match(checkoutPage, /onClick=\{\(\) => placeOrder\(blocked\)\}/)
+      assert.match(checkoutPage, /if \(blocked\) return/)
+      assert.match(checkoutPage, /response\.status === 401[\s\S]*?await session\.logOut\(\)/)
+      // Any 2xx refreshes the badge and lands on My Orders, with the number only when parsed.
+      assert.match(
+        checkoutPage,
+        /refresh\(\)\s*const placedNumber = placedNumberOf\(body\)\s*void navigate\('\/orders', placedNumber === undefined \? \{\} : \{ state: \{ placedNumber \} \}\)/,
+      )
+      assert.doesNotMatch(checkoutPage, /placedNumber === undefined\) \{\s*setActionError/)
+      // On a refused Place the resync runs before the Place message is set.
+      assert.match(checkoutPage, /if \(response\.status === 409\) await loadCheckout\(\)\s*setActionError\(message\)/)
+      assert.match(checkoutPage, /body: JSON\.stringify\(\{ note \}\)/)
+      assert.doesNotMatch(checkoutPage, /deliveryAddress[^\n]*JSON\.stringify|JSON\.stringify\(\{[^}]*address/i)
+      assert.doesNotMatch(checkoutPage, /\sdisabled=\{blocked/)
+      assert.doesNotMatch(checkoutPage, /localStorage|sessionStorage|indexedDB/)
+      assert.doesNotMatch(checkoutPage, /setNote\(''\)/)
+
+      // My Orders: list, placed line, empty state, Colombo dates.
+      assert.match(ordersPage, /fetch\('\/api\/orders'/)
+      assert.match(ordersPage, /new AbortController\(\)/)
+      assert.match(ordersPage, /<Spinner \/>/)
+      assert.match(ordersPage, /RefreshIcon/)
+      assert.match(ordersPage, /No Orders yet\./)
+      // The confirmation comes from the captured number, shown even if the list fails to load.
+      assert.match(ordersPage, /Order #\{placedNumber\} placed\./)
+      assert.match(ordersPage, /const \[placedNumber\] = useState\(\(\) => placedNumberFrom\(location\.state\)\)/)
+      assert.match(ordersPage, /navigate\(location\.pathname, \{ replace: true, state: null \}\)/)
+      assert.match(ordersPage, /\{justPlaced \? placedLine : null\}/)
+      assert.match(ordersPage, /\{placedRowListed \? null : placedLine\}/)
+      assert.match(ordersPage, /status === 'error'[\s\S]*?My Orders[\s\S]*?\{placedLine\}[\s\S]*?\{refreshButton\}/)
+      assert.match(ordersPage, /response\.status === 401[\s\S]*?await logOut\.current\(\)/)
+      assert.match(ordersPage, /\(confirmRef\.current \?\? headingRef\.current\)\?\.focus\(\)/)
+      assert.match(ordersPage, /tabIndex=\{-1\} ref=\{headingRef\}/)
+      assert.match(ordersPage, /'order-row is-placed'/)
+      assert.match(ordersPage, />#\{order\.publicNumber\}</)
+      assert.match(ordersPage, /formatRupees\(order\.goodsTotal\)/)
+      assert.match(ordersPage, /timeZone: 'Asia\/Colombo'/)
+      assert.match(ordersPage, /role="alert"/)
+      assert.doesNotMatch(ordersPage, /localStorage|sessionStorage|indexedDB/)
+      assert.doesNotMatch(ordersPage, /Cancel|payable|delivery(Price|Fee|Charge)/i)
+
+      const gated = storefrontApp.match(/<Route element=\{<AuthGate \/>\}>([\s\S]*?)<\/Route>/)?.[1]
+      assert.ok(gated)
+      assert.match(gated, /path="orders" element=\{<OrdersPage \/>\}/)
+      assert.match(storefrontApp, /import \{ OrdersPage \} from '\.\/OrdersPage'/)
+
+      assert.ok(cssRule(baseCss, '.order-list'))
+      assert.match(cssRule(baseCss, '.order-row'), /var\(--color-border-default\)/)
+      assert.match(cssRule(baseCss, '.order-row-meta'), /var\(--color-text-secondary\)/)
+      const placedRow = cssRule(baseCss, '.order-row.is-placed')
+      assert.match(placedRow, /var\(--color-accent-quiet\)/)
+      assert.match(placedRow, /var\(--space-edge-strong\) solid var\(--color-accent-primary\)/)
+      // Every class the page renders for the placed row has a rule.
+      for (const name of ['order-row-placed', 'order-row-main', 'order-row-meta']) {
+        assert.match(ordersPage, new RegExp(`className="${name}[ "]`))
+        assert.ok(cssRule(baseCss, `.${name}`))
+      }
+
+      // Place answers are never cached either.
+      assert.match(ordersHttp, /'\/orders',\s*safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)/)
+      // A pack that went off the list is refused as blocked before anything is written.
+      assert.ok(
+        ordersPlace.indexOf("code: 'checkout_blocked', message: blockedMessage(offList)") <
+          ordersPlace.indexOf('INSERT INTO orders'),
+      )
+      assert.doesNotMatch(ordersPlace, /is not live/)
     })
   })
 })
