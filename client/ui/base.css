@@ -759,6 +759,50 @@ summary,
   margin-top: var(--space-4);
 }
 
+/* My Orders (minimal): one row per order, number and total on top, status and date below. */
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--space-edge-hairline) solid var(--color-border-default);
+}
+
+/* The just-placed order: an accent-quiet block with a strong accent edge. */
+.order-row.is-placed {
+  padding: var(--space-3);
+  background: var(--color-accent-quiet);
+  border-left: var(--space-edge-strong) solid var(--color-accent-primary);
+  border-radius: var(--radius-default);
+}
+
+.order-row-placed {
+  margin: 0;
+}
+.order-row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.order-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+}
+
 /* Banner / notice: 3px semantic edge over the matching tint, title in the hue. */
 .notice {
   display: flex;

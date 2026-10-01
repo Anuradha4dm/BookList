@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react'
+import { useNavigate } from 'react-router'
 import { Spinner, formatRupees } from '@booklist/ui'
 import type { ProfileResponse } from './accountProfile'
+import { useSession } from './auth'
 import { useCartBadge, type CheckoutLine } from './cart'
 import {
   acceptPriceRequest,
@@ -16,6 +18,7 @@ const DELIVERY_COPY = 'Delivery charge: to be confirmed by the shop'
 const BLOCKED_REASON = 'Resolve the lines marked above before you place this order.'
 const BLOCKED_REASON_ID = 'checkout-place-reason'
 const ACCEPT_FAILED = 'Could not accept that price.'
+const PLACE_FAILED = 'Could not place this order. Try again.'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -28,6 +31,13 @@ type ApiError = {
 function apiMessage(body: ApiError | null, fallback: string): string {
   const message = body?.error?.message
   return typeof message === 'string' && message.trim() ? message : fallback
+}
+
+/** The order number from a Place answer, or undefined when the body is not one. */
+function placedNumberOf(body: unknown): number | undefined {
+  const order = (body as { order?: { publicNumber?: unknown } } | null)?.order
+  const value = order?.publicNumber
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
 }
 
 function attentionCopy(count: number): string {
@@ -125,6 +135,16 @@ function StaleNotice({ line, busy, onAccept, onRemove }: NoticeProps) {
 
 export function CheckoutPage() {
   const { refresh } = useCartBadge()
+  const session = useSession()
+  const navigate = useNavigate()
+  /** One Idempotency-Key per mount, reused on every retry; never stored in the browser. */
+  const placeKey = useRef<string | null>(null)
+  if (placeKey.current === null) placeKey.current = crypto.randomUUID()
+  /** The mount's key; made here only if the ref is somehow empty, so no request sends a blank key. */
+  const ensurePlaceKey = (): string => {
+    if (!placeKey.current) placeKey.current = crypto.randomUUID()
+    return placeKey.current
+  }
   const [snapshot, setSnapshot] = useState<CheckoutSnapshot | null>(null)
   const [address, setAddress] = useState('')
   const [note, setNote] = useState('')
@@ -270,6 +290,46 @@ export function CheckoutPage() {
     )
   }
 
+  const placeOrder = (blocked: boolean) => {
+    // A blocked button stays focusable and announced, but its click does nothing.
+    if (blocked) return
+    void withLock(async () => {
+      let response: Response
+      try {
+        response = await fetch('/api/orders', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'content-type': 'application/json',
+            'Idempotency-Key': ensurePlaceKey(),
+          },
+          body: JSON.stringify({ note }),
+        })
+      } catch {
+        setActionError(UNREACHABLE)
+        return
+      }
+      if (response.status === 401) {
+        // The cart stays on the server; signing in again lands on packs.
+        await session.logOut()
+        return
+      }
+      const body = (await response.json().catch(() => null)) as unknown
+      if (!response.ok) {
+        const message = apiMessage(body as ApiError | null, PLACE_FAILED)
+        // A refused Place (a line went stale, or the cart emptied elsewhere): show what changed.
+        // The resync runs first so its own outcome can never replace the Place message.
+        if (response.status === 409) await loadCheckout()
+        setActionError(message)
+        return
+      }
+      // Any 2xx means the order exists and the cart is empty, even if the body is unreadable.
+      refresh()
+      const placedNumber = placedNumberOf(body)
+      void navigate('/orders', placedNumber === undefined ? {} : { state: { placedNumber } })
+    })
+  }
+
   const refreshCheckout = () =>
     void withLock(async () => {
       if ((await loadCheckout()) === 'ok') refresh()
@@ -385,6 +445,8 @@ export function CheckoutPage() {
               className={blocked ? 'button-primary button-blocked' : 'button-primary'}
               aria-disabled={blocked ? 'true' : undefined}
               aria-describedby={blocked ? BLOCKED_REASON_ID : undefined}
+              aria-busy={busy ? 'true' : undefined}
+              onClick={() => placeOrder(blocked)}
             >
               Place Order
             </button>

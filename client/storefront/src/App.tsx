@@ -5,17 +5,9 @@ import { BrowsePage } from './BrowsePage'
 import { CartPage } from './CartPage'
 import { CheckoutPage } from './CheckoutPage'
 import { ItemsPage } from './ItemsPage'
+import { OrdersPage } from './OrdersPage'
 import { PackPage } from './PackPage'
 import { Shell } from './Shell'
-
-function Page({ title }: { title: string }) {
-  return (
-    <section>
-      <h1 className="page-heading text-heading-lg">{title}</h1>
-      <div className="page-region" />
-    </section>
-  )
-}
 
 function BlankPage() {
   return null
@@ -31,7 +23,7 @@ export const router = createBrowserRouter(
         <Route element={<AuthGate />}>
           <Route path="cart" element={<CartPage />} />
           <Route path="cart/checkout" element={<CheckoutPage />} />
-          <Route path="orders" element={<Page title="Orders" />} />
+          <Route path="orders" element={<OrdersPage />} />
           <Route path="account" element={<AccountPage />} />
         </Route>
       </Route>
