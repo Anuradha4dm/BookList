@@ -1,5 +1,5 @@
 # generated: 2026-09-09T16:59:33
-# last_updated: 2026-09-23
+# last_updated: 2026-10-01
 # project: BookList
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-09-09T16:59:33
-last_updated: 2026-09-23
+last_updated: 2026-10-01
 project: BookList
 project_key: NOKEY
 tracking_system: file-system
@@ -49,29 +49,29 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Open the door — accounts for Nimali and Gothami
-  epic-1: in-progress
-  1-1-project-scaffold-and-chalk-and-brass-shell: review
-  1-2-admin-seed-session-and-recovery-code: review
-  1-3-parent-register-login-and-auth-gates: review
-  1-4-parent-account: review
-  1-5-admin-password-and-parent-reset: review
+  epic-1: done
+  1-1-project-scaffold-and-chalk-and-brass-shell: done
+  1-2-admin-seed-session-and-recovery-code: done
+  1-3-parent-register-login-and-auth-gates: done
+  1-4-parent-account: done
+  1-5-admin-password-and-parent-reset: done
   epic-1-retrospective: optional
 
   # Epic 2: Stock the shop and browse the lists
-  epic-2: in-progress
-  2-1-schools-and-grades: review
-  2-2-book-master: review
-  2-3-individual-items: review
-  2-4-packs-from-the-book-master: review
-  2-5-browse-packs-and-items-without-an-account: review
-  2-6-configure-a-pack-ticks-quantities-and-live-totals: review
+  epic-2: done
+  2-1-schools-and-grades: done
+  2-2-book-master: done
+  2-3-individual-items: done
+  2-4-packs-from-the-book-master: done
+  2-5-browse-packs-and-items-without-an-account: done
+  2-6-configure-a-pack-ticks-quantities-and-live-totals: done
   epic-2-retrospective: optional
 
   # Epic 3: Build a cart that survives the evening
   epic-3: in-progress
-  3-1-add-a-configured-pack-to-the-cart: review
-  3-2-add-individual-items-to-the-same-cart: review
-  3-3-a-cart-that-persists-totals-and-can-be-emptied: backlog
+  3-1-add-a-configured-pack-to-the-cart: done
+  3-2-add-individual-items-to-the-same-cart: done
+  3-3-a-cart-that-persists-totals-and-can-be-emptied: review
   epic-3-retrospective: optional
 
   # Epic 4: Capture the order and work the morning list

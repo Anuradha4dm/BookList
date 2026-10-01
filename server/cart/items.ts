@@ -5,6 +5,7 @@ import {
   QUANTITY_MIN,
   QUANTITY_RANGE_MESSAGE,
 } from '../catalog/packs.js'
+import { lineNotFound, type CartEditFailure } from './edits.js'
 
 export type CartItemLine = {
   id: number
@@ -46,7 +47,7 @@ function toLine(row: SqlRow): CartItemLine {
   }
 }
 
-function parseQuantity(value: unknown): number | undefined {
+export function parseQuantity(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return value
   if (typeof value === 'string' && /^-?\d+$/.test(value)) {
     const quantity = Number(value)
@@ -141,7 +142,10 @@ export function addCartItem(
 }
 
 /** Cart tables only — no live catalog joins. */
-export function listCartItemLines(db: Database.Database, parentId: number): CartItemLine[] {
+export function listCartItemLines(
+  db: Database.Database,
+  parentId: number,
+): CartItemLineWithTotal[] {
   const rows = db
     .prepare(
       `SELECT id, item_id, quantity, title, unit_price
@@ -150,5 +154,66 @@ export function listCartItemLines(db: Database.Database, parentId: number): Cart
        ORDER BY id`,
     )
     .all(parentId) as SqlRow[]
-  return rows.map(toLine)
+  return rows.map((row) => withItemTotal(toLine(row)))
+}
+
+export type CartItemLineWithTotal = CartItemLine & { lineTotal: number }
+
+/** Goods total for an item line, from its add-time unit price. */
+export function itemLineTotal(line: CartItemLine): number {
+  return line.quantity * line.unitPrice
+}
+
+export function withItemTotal(line: CartItemLine): CartItemLineWithTotal {
+  return { ...line, lineTotal: itemLineTotal(line) }
+}
+
+type ItemEditResult = { ok: true; line: CartItemLineWithTotal } | CartEditFailure
+
+/** Sets the quantity on the parent's own item line. Title and price stay as stored. */
+export function setCartItemQuantity(
+  db: Database.Database,
+  parentId: number,
+  lineId: number,
+  quantityRaw: unknown,
+): ItemEditResult {
+  const quantity = parseQuantity(quantityRaw)
+  if (quantity === undefined || quantity < QUANTITY_MIN || quantity > QUANTITY_MAX) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'invalid_input',
+      message: QUANTITY_RANGE_MESSAGE,
+      field: 'quantity',
+    }
+  }
+
+  return db.transaction((): ItemEditResult => {
+    const updated = db
+      .prepare('UPDATE cart_item_lines SET quantity = ? WHERE id = ? AND parent_id = ?')
+      .run(quantity, lineId, parentId)
+    if (updated.changes === 0) return lineNotFound()
+    const row = db
+      .prepare(
+        `SELECT id, item_id, quantity, title, unit_price
+         FROM cart_item_lines
+         WHERE id = ? AND parent_id = ?`,
+      )
+      .get(lineId, parentId) as SqlRow | undefined
+    if (!row) return lineNotFound()
+    return { ok: true, line: withItemTotal(toLine(row)) }
+  })()
+}
+
+/** Deletes the parent's own item line. */
+export function removeCartItemLine(
+  db: Database.Database,
+  parentId: number,
+  lineId: number,
+): { ok: true } | CartEditFailure {
+  const deleted = db
+    .prepare('DELETE FROM cart_item_lines WHERE id = ? AND parent_id = ?')
+    .run(lineId, parentId)
+  if (deleted.changes === 0) return lineNotFound()
+  return { ok: true }
 }
