@@ -63,3 +63,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-6-configure-a-pack.md`
   summary: No storefront fetch carries a timeout, so a request that hangs instead of failing leaves a spinner on screen indefinitely with no unreachable message and no retry.
   evidence: Every storefront page uses a bare `fetch` with an `AbortController` wired only to unmount, so nothing ever aborts a stalled request. The architecture spine expects free-tier auto-sleep cold starts, which is exactly when a first request is slowest. Pre-existing across `BrowsePage`, `ItemsPage`, and `AccountPage`; the pack screen inherits it rather than introducing it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-a-cart-that-persists-totals-and-can-be-emptied.md`
+  summary: Cart quantity parsing (`parseQuantity`, shared by POST /api/cart/items and the 3.3 PATCH routes) accepts numeric strings such as "5" although the contract says an integer from 1 to 20.
+  evidence: Pre-existing from story 3.2; tightening it changes item-add semantics, which the 3.3 spec puts under Ask First.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-a-cart-that-persists-totals-and-can-be-emptied.md`
+  summary: The 1–20 quantity stepper markup and cap copy are now duplicated across PackPage, ItemsPage, and CartPage; extract one shared stepper component and copy constant.
+  evidence: Three hand-copied stepper implementations already differ in where the cap notice sits, so they can drift.

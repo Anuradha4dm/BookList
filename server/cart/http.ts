@@ -7,8 +7,22 @@ import {
   type SessionLookup,
 } from '../identity/index.js'
 import { enableForeignKeys } from '../identity/seed.js'
-import { addCartItem, listCartItemLines } from './items.js'
-import { addConfiguredPack, listCartPackLines } from './packs.js'
+import {
+  addCartItem,
+  listCartItemLines,
+  removeCartItemLine,
+  setCartItemQuantity,
+  type CartItemLineWithTotal,
+} from './items.js'
+import { CART_LINE_NOT_FOUND_MESSAGE, PACK_MEMBER_NOT_FOUND_MESSAGE } from './edits.js'
+import {
+  addConfiguredPack,
+  cartGoodsTotal,
+  listCartPackLines,
+  removeCartPackLine,
+  setPackMemberQuantity,
+  type CartPackLineWithTotal,
+} from './packs.js'
 
 const PARENT_FORBIDDEN =
   'This is a parent cart. Sign in as a parent to view or add packs.'
@@ -62,6 +76,41 @@ function parsePositiveId(value: unknown): number | undefined {
     if (Number.isSafeInteger(id)) return id
   }
   return undefined
+}
+
+function packLineJson(line: CartPackLineWithTotal) {
+  return {
+    kind: 'pack' as const,
+    id: line.id,
+    packId: line.packId,
+    sequence: line.sequence,
+    gradeName: line.gradeName,
+    label: line.label,
+    members: line.members.map((member) => ({
+      bookId: member.bookId,
+      included: member.included,
+      quantity: member.quantity,
+      title: member.title,
+      unitPrice: member.unitPrice,
+    })),
+    lineTotal: line.lineTotal,
+  }
+}
+
+function itemLineJson(line: CartItemLineWithTotal) {
+  return {
+    kind: 'item' as const,
+    id: line.id,
+    itemId: line.itemId,
+    quantity: line.quantity,
+    title: line.title,
+    unitPrice: line.unitPrice,
+    lineTotal: line.lineTotal,
+  }
+}
+
+function sendLineNotFound(res: Response): void {
+  sendError(res, 404, 'not_found', CART_LINE_NOT_FOUND_MESSAGE)
 }
 
 export function createCartRouter(db: Database.Database, env: IdentityEnv): Router {
@@ -133,26 +182,102 @@ export function createCartRouter(db: Database.Database, env: IdentityEnv): Route
       const parentId = requireParent(db, env, req, res)
       if (parentId === undefined) return
 
-      const packLines = listCartPackLines(db, parentId).map((line) => ({
-        kind: 'pack' as const,
-        id: line.id,
-        packId: line.packId,
-        sequence: line.sequence,
-        gradeName: line.gradeName,
-        label: line.label,
-      }))
-      const itemLines = listCartItemLines(db, parentId).map((line) => ({
-        kind: 'item' as const,
-        id: line.id,
-        itemId: line.itemId,
-        quantity: line.quantity,
-        title: line.title,
-        unitPrice: line.unitPrice,
-      }))
+      const packLines = listCartPackLines(db, parentId)
+      const itemLines = listCartItemLines(db, parentId)
 
       res.status(200).json({
-        lines: [...packLines, ...itemLines],
+        lines: [...packLines.map(packLineJson), ...itemLines.map(itemLineJson)],
+        goodsTotal: cartGoodsTotal(packLines, itemLines),
       })
+    }),
+  )
+
+  router.patch(
+    '/cart/packs/:lineId/members/:bookId',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+      const bookId = parsePositiveId(req.params.bookId)
+      if (bookId === undefined) {
+        sendError(res, 404, 'not_found', PACK_MEMBER_NOT_FOUND_MESSAGE)
+        return
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const result = setPackMemberQuantity(db, parentId, lineId, bookId, body.quantity)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(200).json(packLineJson(result.line))
+    }),
+  )
+
+  router.patch(
+    '/cart/items/:lineId',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const result = setCartItemQuantity(db, parentId, lineId, body.quantity)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(200).json(itemLineJson(result.line))
+    }),
+  )
+
+  router.delete(
+    '/cart/packs/:lineId',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+      const result = removeCartPackLine(db, parentId, lineId)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(204).end()
+    }),
+  )
+
+  router.delete(
+    '/cart/items/:lineId',
+    safe((req, res) => {
+      const parentId = requireParent(db, env, req, res)
+      if (parentId === undefined) return
+
+      const lineId = parsePositiveId(req.params.lineId)
+      if (lineId === undefined) {
+        sendLineNotFound(res)
+        return
+      }
+      const result = removeCartItemLine(db, parentId, lineId)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message, result.field)
+        return
+      }
+      res.status(204).end()
     }),
   )
 

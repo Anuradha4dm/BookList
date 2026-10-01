@@ -9,6 +9,14 @@ import {
 } from 'react'
 import { useSession } from './auth'
 
+export type CartPackMember = {
+  bookId: number
+  included: boolean
+  quantity: number
+  title: string
+  unitPrice: number
+}
+
 export type CartPackLine = {
   kind: 'pack'
   id: number
@@ -16,6 +24,8 @@ export type CartPackLine = {
   sequence: number
   gradeName: string
   label: string
+  members: CartPackMember[]
+  lineTotal: number
 }
 
 export type CartItemLine = {
@@ -25,6 +35,7 @@ export type CartItemLine = {
   quantity: number
   title: string
   unitPrice: number
+  lineTotal: number
 }
 
 export type CartLine = CartPackLine | CartItemLine
