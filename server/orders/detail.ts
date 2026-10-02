@@ -58,7 +58,8 @@ export type CancelResult =
   | { ok: false; status: 404; code: 'not_found'; message: string }
   | { ok: false; status: 409; code: 'order_not_cancellable'; message: string }
 
-type DetailSqlRow = {
+/** The `orders` columns every detail read selects; see `DETAIL_COLUMNS`. */
+export type DetailSqlRow = {
   id: number
   public_number: number
   status: string
@@ -95,6 +96,11 @@ type ItemLineSqlRow = {
   line_total_rupees: number
 }
 
+/** The `orders` columns `toDetail` needs, in `DetailSqlRow` order. */
+export const DETAIL_COLUMNS = `id, public_number, status, placed_at, goods_total_rupees,
+              delivery_price_rupees, payable_total_rupees, parent_delivery_note, delivery_address,
+              cancellation_reason, cancelled_by, cancelled_at`
+
 function findOwnedOrder(
   db: Database.Database,
   parentId: number,
@@ -102,9 +108,7 @@ function findOwnedOrder(
 ): DetailSqlRow | undefined {
   return db
     .prepare(
-      `SELECT id, public_number, status, placed_at, goods_total_rupees,
-              delivery_price_rupees, payable_total_rupees, parent_delivery_note, delivery_address,
-              cancellation_reason, cancelled_by, cancelled_at
+      `SELECT ${DETAIL_COLUMNS}
        FROM orders
        WHERE id = ? AND parent_id = ?`,
     )
@@ -129,7 +133,11 @@ function cancellationOf(row: DetailSqlRow): OrderCancellation | null {
   }
 }
 
-function toDetail(db: Database.Database, row: DetailSqlRow): OrderDetail {
+/**
+ * The snapshot detail of one order row: the row's own fields plus its three line reads.
+ * Shared by the parent and the admin views so the line mapping lives in one place.
+ */
+export function toDetail(db: Database.Database, row: DetailSqlRow): OrderDetail {
   const packRows = db
     .prepare(
       `SELECT id, pack_name, label, grade_name, line_total_rupees

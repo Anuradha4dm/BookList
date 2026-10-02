@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   ORDER_STATUSES,
   Skeleton,
@@ -10,6 +10,7 @@ import {
 import { useAdminAuth } from './auth'
 import {
   NEEDS_CALL_STATUS,
+  adminOrderRoute,
   adminOrderSections,
   adminOrdersPath,
   isPastStatus,
@@ -161,25 +162,28 @@ function OrderRow({ order, now }: { order: AdminOrder; now?: number }) {
   const needsCall = order.status === NEEDS_CALL_STATUS
   return (
     <li className={needsCall ? 'admin-order-row is-attention' : 'admin-order-row'}>
-      <div className="admin-order-id">
-        <p className="admin-order-number text-heading-sm">#{order.publicNumber}</p>
-        <p className="admin-order-time text-meta">{placedAtCopy(order.placedAt)}</p>
-      </div>
-      <div className="admin-order-parent">
-        <p className="admin-order-name text-body-strong">{order.parentName}</p>
-        <p className="admin-order-meta text-meta">
-          {order.whatsapp} · {lineCountCopy(order.lineCount)} · {formatRupees(order.goodsTotal)}
+      {/* The whole row opens the order; the link lays its cells on the row's own grid. */}
+      <Link className="admin-order-row-link" to={adminOrderRoute(order.id)}>
+        <div className="admin-order-id">
+          <p className="admin-order-number text-heading-sm">#{order.publicNumber}</p>
+          <p className="admin-order-time text-meta">{placedAtCopy(order.placedAt)}</p>
+        </div>
+        <div className="admin-order-parent">
+          <p className="admin-order-name text-body-strong">{order.parentName}</p>
+          <p className="admin-order-meta text-meta">
+            {order.whatsapp} · {lineCountCopy(order.lineCount)} · {formatRupees(order.goodsTotal)}
+          </p>
+        </div>
+        <p className="admin-order-lines text-meta" title={order.linesSummary}>
+          {order.linesSummary}
         </p>
-      </div>
-      <p className="admin-order-lines text-meta" title={order.linesSummary}>
-        {order.linesSummary}
-      </p>
-      <div className="admin-order-status">
-        <StatusPill status={order.status} />
-      </div>
-      <div className="admin-order-call-cell">
-        {needsCall ? <CallChip callAttemptedAt={order.callAttemptedAt} now={now} /> : null}
-      </div>
+        <div className="admin-order-status">
+          <StatusPill status={order.status} />
+        </div>
+        <div className="admin-order-call-cell">
+          {needsCall ? <CallChip callAttemptedAt={order.callAttemptedAt} now={now} /> : null}
+        </div>
+      </Link>
     </li>
   )
 }
