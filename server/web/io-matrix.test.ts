@@ -29,6 +29,13 @@ import {
   itemsItemPath,
 } from '../../client/admin/src/items.ts'
 import {
+  adminOrderSections,
+  adminOrdersPath,
+  parseAdminOrders,
+  statusFilterFrom,
+  withStatusFilter,
+} from '../../client/admin/src/orders.ts'
+import {
   packCreateBody,
   packPatchBody,
   packsArchivePath,
@@ -183,6 +190,8 @@ const ORDERS_PORT = String(18783)
 const ordersBaseUrl = `http://127.0.0.1:${ORDERS_PORT}`
 const ORDERS_DETAIL_PORT = String(18784)
 const ordersDetailBaseUrl = `http://127.0.0.1:${ORDERS_DETAIL_PORT}`
+const ADMIN_ORDERS_PORT = String(18785)
+const adminOrdersBaseUrl = `http://127.0.0.1:${ADMIN_ORDERS_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -337,7 +346,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 10)
+        assert.equal(applied.n, 11)
       } finally {
         db.close()
       }
@@ -2274,7 +2283,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 10)
+          assert.equal(applied.n, 11)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -9965,6 +9974,584 @@ describe('I/O & edge-case matrix', () => {
       // Reduced motion also stops the chevron turning.
       const reduced = baseCss.slice(baseCss.indexOf('@media (prefers-reduced-motion: reduce)'))
       assert.match(reduced, /\.order-row-toggle\[aria-expanded='true'\] \.order-row-chevron \{\s*transform: none;/)
+    })
+  })
+
+  describe('Admin Orders — one list, open and past', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parentSerial = 0
+
+    type AdminOrderJson = {
+      id: number
+      publicNumber: number
+      status: string
+      placedAt: string
+      parentName: string
+      whatsapp: string
+      goodsTotal: number
+      lineCount: number
+      linesSummary: string
+      callAttemptedAt: string | null
+    }
+    type ErrorBody = { error: { code: string; message: string } }
+    type Parent = { cookie: string; id: number; name: string; whatsapp: string }
+    type Placed = { id: number; publicNumber: number; packName: string; itemTitles: [string, string] }
+
+    const FORBIDDEN = 'Only the shop owner can see all orders. Sign in as the shop owner to continue.'
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${adminOrdersBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(pathName: string, body: unknown): Promise<{ id: number; title?: string }> {
+      const response = await fetch(`${adminOrdersBaseUrl}${pathName}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: JSON.stringify(body),
+      })
+      assert.equal(response.status, 201, `POST ${pathName}: ${response.status}`)
+      return (await response.json()) as { id: number; title?: string }
+    }
+
+    async function registerParent(tag: string, whatsapp: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `admin-orders.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const name = `Admin list ${tag}`
+      const response = await fetch(`${adminOrdersBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          deliveryAddress: '12 Temple Road, Nugegoda',
+          whatsapp,
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const stored = readDb(
+        (db) => db.prepare('SELECT id, whatsapp FROM parents WHERE email = ?').get(email) as { id: number; whatsapp: string },
+      )
+      return { cookie: cookieHeader(cookie), id: stored.id, name, whatsapp: stored.whatsapp }
+    }
+
+    /** One pack (one book) plus two items, then Place. */
+    async function placeOne(parent: Parent, tag: string): Promise<Placed> {
+      const s = `${Date.now()}-${tag}`
+      const schoolId = (await adminSend('/api/admin/schools', catalogNameBody(`List school ${s}`))).id
+      const gradeName = `Grade ${s}`
+      const gradeId = (await adminSend('/api/admin/grades', catalogNameBody(gradeName))).id
+      const book = await adminSend('/api/admin/books', bookBody(`Atlas ${s}`, 1500))
+      const packName = `List pack ${s}`
+      const pack = await adminSend('/api/admin/packs', packCreateBody(packName, schoolId, gradeId, 'List', [book.id]))
+      const itemTitles: [string, string] = [`Pencil ${s}`, `Eraser ${s}`]
+      const items = [
+        await adminSend('/api/admin/items', itemBody(itemTitles[0], 'Stationery', 120)),
+        await adminSend('/api/admin/items', itemBody(itemTitles[1], 'Stationery', 60)),
+      ]
+      const packResponse = await fetch(`${adminOrdersBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${book.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      for (const item of items) {
+        const itemResponse = await fetch(`${adminOrdersBaseUrl}/api/cart/items`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: parent.cookie },
+          body: JSON.stringify({ itemId: item.id, quantity: 1 }),
+        })
+        assert.ok(itemResponse.status === 201 || itemResponse.status === 200, `add item ${itemResponse.status}`)
+      }
+      const response = await fetch(`${adminOrdersBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: parent.cookie,
+          'Idempotency-Key': `admin-list-${tag}`,
+        },
+        body: JSON.stringify({}),
+      })
+      assert.equal(response.status, 201)
+      const order = ((await response.json()) as { order: { id: number; publicNumber: number } }).order
+      return { id: order.id, publicNumber: order.publicNumber, packName, itemTitles }
+    }
+
+    function getList(cookie: string | undefined): Promise<Response> {
+      return fetch(`${adminOrdersBaseUrl}/api/admin/orders`, { headers: cookie ? { cookie } : {} })
+    }
+
+    async function listAll(): Promise<AdminOrderJson[]> {
+      const response = await getList(adminCookie)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as { orders: AdminOrderJson[] }
+      assert.deepEqual(Object.keys(body), ['orders'])
+      return body.orders
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    /** Direct DB writes stand in for the admin stories (4.5, 4.6) that do not exist yet. */
+    function writeDb(write: (db: Database.Database) => void): void {
+      const db = new Database(dbPath)
+      try {
+        write(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    async function expectRefused(response: Response, status: number, code: string, message?: string): Promise<void> {
+      assert.equal(response.status, status)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, code)
+      if (message !== undefined) assert.equal(body.error.message, message)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-admin-orders-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ADMIN_ORDERS_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    let parentA: Parent
+    let parentB: Parent
+    let a1: Placed
+    let a2: Placed
+    let a3: Placed
+    let b1: Placed
+    let realAnswer: unknown
+
+    it('empty: no orders answers 200 { orders: [] } and the column exists but is unset', async () => {
+      assert.deepEqual(await listAll(), [])
+      const columns = readDb((db) => db.prepare('PRAGMA table_info(orders)').all() as Array<{ name: string; notnull: number; dflt_value: unknown }>)
+      const column = columns.find((entry) => entry.name === 'call_attempted_at')
+      assert.ok(column, 'call_attempted_at column is missing')
+      assert.equal(column.notnull, 0)
+      assert.equal(column.dflt_value, null)
+      const applied = readDb((db) => db.prepare('SELECT filename FROM applied_migrations ORDER BY rowid').all() as Array<{ filename: string }>)
+      assert.equal(applied.at(-1)?.filename, '011_orders_call_attempted.sql')
+    })
+
+    it('auth: 401 without a cookie and 403 forbidden for a parent', async () => {
+      parentA = await registerParent('a', '0771111111')
+      await expectRefused(await getList(undefined), 401, 'unauthenticated')
+      await expectRefused(await getList(parentA.cookie), 403, 'forbidden', FORBIDDEN)
+    })
+
+    it('all orders: both parents, id DESC, with snapshot name and WhatsApp; Cancelled and Delivered included', async () => {
+      parentB = await registerParent('b', '0772222222')
+      a1 = await placeOne(parentA, 'a1')
+      a2 = await placeOne(parentA, 'a2')
+      b1 = await placeOne(parentB, 'b1')
+      a3 = await placeOne(parentA, 'a3')
+      writeDb((db) => {
+        db.prepare("UPDATE orders SET status = 'Cancelled', cancelled_by = 'admin', cancellation_reason = 'Out of stock' WHERE id = ?").run(a2.id)
+        db.prepare("UPDATE orders SET status = 'Delivered', delivery_price_rupees = 400, payable_total_rupees = 2080 WHERE id = ?").run(a3.id)
+      })
+      const orders = await listAll()
+      realAnswer = { orders }
+      assert.deepEqual(orders.map((order) => order.id), [a3.id, b1.id, a2.id, a1.id])
+      assert.deepEqual(orders.map((order) => order.status), ['Delivered', 'Order Is Placed', 'Cancelled', 'Order Is Placed'])
+      for (const order of orders) {
+        assert.deepEqual(Object.keys(order).sort(), [
+          'callAttemptedAt',
+          'goodsTotal',
+          'id',
+          'lineCount',
+          'linesSummary',
+          'parentName',
+          'placedAt',
+          'publicNumber',
+          'status',
+          'whatsapp',
+        ])
+        const owner = order.id === b1.id ? parentB : parentA
+        assert.equal(order.parentName, owner.name)
+        assert.equal(order.whatsapp, owner.whatsapp)
+        assert.equal(order.goodsTotal, 1680)
+        assert.equal(order.callAttemptedAt, null)
+        assert.match(order.placedAt, /Z$/)
+      }
+      assert.equal(orders.find((order) => order.id === b1.id)?.publicNumber, b1.publicNumber)
+    })
+
+    it('summary: one pack plus two items is three lines, pack name first then item titles', async () => {
+      const order = (await listAll()).find((entry) => entry.id === a1.id)
+      assert.ok(order)
+      assert.equal(order.lineCount, 3)
+      assert.equal(order.linesSummary, `${a1.packName}, ${a1.itemTitles[0]}, ${a1.itemTitles[1]}`)
+    })
+
+    it('summary order: lines follow position, not row id, within each line table', async () => {
+      const ids = readDb(
+        (db) =>
+          db.prepare('SELECT id, position FROM order_item_lines WHERE order_id = ? ORDER BY id').all(b1.id) as Array<{ id: number; position: number }>,
+      )
+      assert.equal(ids.length, 2)
+      assert.ok(ids[0].position < ids[1].position)
+      // Swap the two item positions, so position order is the reverse of id order.
+      writeDb((db) => {
+        const set = db.prepare('UPDATE order_item_lines SET position = ? WHERE id = ?')
+        db.transaction(() => {
+          set.run(ids[1].position, ids[0].id)
+          set.run(ids[0].position, ids[1].id)
+        })()
+      })
+      const order = (await listAll()).find((entry) => entry.id === b1.id)
+      assert.ok(order)
+      assert.equal(order.lineCount, 3)
+      assert.equal(order.linesSummary, `${b1.packName}, ${b1.itemTitles[1]}, ${b1.itemTitles[0]}`)
+    })
+
+    it('snapshot holds: a parent renaming their account still lists the placed name', async () => {
+      const response = await fetch(`${adminOrdersBaseUrl}/api/parents/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: parentA.cookie },
+        body: JSON.stringify({
+          name: 'Renamed parent',
+          deliveryAddress: '1 New Road, Colombo',
+          whatsapp: '0779999999',
+          secondPhone: '',
+          password: '',
+        }),
+      })
+      assert.equal(response.status, 200)
+      const current = readDb((db) => db.prepare('SELECT name, whatsapp FROM parents WHERE id = ?').get(parentA.id) as { name: string; whatsapp: string })
+      assert.equal(current.name, 'Renamed parent')
+      for (const order of (await listAll()).filter((entry) => entry.id !== b1.id)) {
+        assert.equal(order.parentName, parentA.name)
+        assert.equal(order.whatsapp, parentA.whatsapp)
+      }
+    })
+
+    it('call state: only the order the DB marks carries callAttemptedAt', async () => {
+      const at = '2026-10-02T03:45:00.000Z'
+      writeDb((db) => {
+        db.prepare('UPDATE orders SET call_attempted_at = ? WHERE id = ?').run(at, a1.id)
+      })
+      const orders = await listAll()
+      for (const order of orders) {
+        assert.equal(order.callAttemptedAt, order.id === a1.id ? at : null)
+      }
+    })
+
+    it('client: the path, the parser, the filter param, and the Open / Past grouping', () => {
+      assert.equal(adminOrdersPath(), '/api/admin/orders')
+      const parsed = parseAdminOrders(realAnswer)
+      assert.ok(parsed)
+      assert.equal(parsed.length, 4)
+      assert.equal(parseAdminOrders({ orders: [{ id: 1 }] }), undefined)
+      // An unknown status fails the whole list, like any other bad field.
+      const good = parsed[0]
+      assert.equal(parseAdminOrders({ orders: [good, { ...good, id: 999, status: 'Lost in post' }] }), undefined)
+      assert.equal(parseAdminOrders({ orders: [{ ...good, status: 'order is placed' }] }), undefined)
+      assert.deepEqual(parseAdminOrders({ orders: [good] }), [good])
+      assert.equal(parseAdminOrders(null), undefined)
+      assert.equal(statusFilterFrom('Cancelled'), 'Cancelled')
+      assert.equal(statusFilterFrom('cancelled'), null)
+      assert.equal(statusFilterFrom('Bogus'), null)
+      assert.equal(statusFilterFrom(null), null)
+      // The URL transform: set, delete, and keep every other param.
+      const start = new URLSearchParams('page=2&q=atlas')
+      const set = withStatusFilter(start, 'Cancelled')
+      assert.equal(set.get('status'), 'Cancelled')
+      assert.equal(set.get('page'), '2')
+      assert.equal(set.get('q'), 'atlas')
+      assert.equal(start.has('status'), false)
+      const cleared = withStatusFilter(new URLSearchParams('status=Cancelled&page=2&q=atlas'), null)
+      assert.equal(cleared.has('status'), false)
+      assert.equal(cleared.toString(), 'page=2&q=atlas')
+      assert.equal(withStatusFilter(new URLSearchParams('status=Delivered&q=x'), 'Processing').toString(), 'status=Processing&q=x')
+
+      const row = (id: number, status: string): AdminOrderJson => ({
+        id,
+        publicNumber: 1000 + id,
+        status,
+        placedAt: '2026-10-01T03:45:00.000Z',
+        parentName: `Parent ${id}`,
+        whatsapp: '0771234567',
+        goodsTotal: 1000,
+        lineCount: 1,
+        linesSummary: 'Pack',
+        callAttemptedAt: null,
+      })
+      const fixture = [
+        row(9, 'Cancelled'),
+        row(8, 'Processing'),
+        row(7, 'Delivered'),
+        row(6, 'Order Is Placed'),
+        row(5, 'Delivered'),
+        row(4, 'Order Is Placed'),
+      ]
+      const [open, past] = adminOrderSections(fixture, null)
+      assert.equal(open.title, 'Open')
+      assert.equal(past.title, 'Past')
+      assert.deepEqual(open.groups.map((group) => group.status), ['Order Is Placed', 'Processing'])
+      // Open lists oldest first; Past newest first.
+      assert.deepEqual(open.groups[0].orders.map((order) => order.id), [4, 6])
+      assert.deepEqual(past.groups.map((group) => group.status), ['Delivered', 'Cancelled'])
+      assert.deepEqual(past.groups[0].orders.map((order) => order.id), [7, 5])
+      const [openCancelled, pastCancelled] = adminOrderSections(fixture, 'Cancelled')
+      assert.deepEqual(openCancelled.groups, [])
+      assert.deepEqual(pastCancelled.groups.map((group) => group.orders.map((order) => order.id)), [[9]])
+      const [emptyOpen, emptyPast] = adminOrderSections([], null)
+      assert.equal(emptyOpen.emptyCopy, 'No open orders.')
+      assert.equal(emptyPast.emptyCopy, 'No past orders.')
+    })
+
+    it('render: sections, group counts, rows, call chips, filter, and both empty cards', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { AdminOrdersBoard, placedAtCopy, calledCopy } = await import('../../client/admin/src/OrdersPage.tsx')
+      const noop = () => {}
+      // The same Colombo day as the attempted call below (2 Oct, 9:15 am).
+      const sameDay = Date.parse('2026-10-02T06:00:00.000Z')
+      const render = (orders: AdminOrderJson[], filter: string | null, extra: { now?: number; busy?: boolean } = {}) =>
+        renderToStaticMarkup(
+          React.createElement(AdminOrdersBoard, {
+            orders,
+            filter: statusFilterFrom(filter),
+            now: extra.now ?? sameDay,
+            busy: extra.busy,
+            onFilterChange: noop,
+            onRefresh: noop,
+          }),
+        )
+      const base = {
+        publicNumber: 1042,
+        placedAt: '2026-10-01T03:45:00.000Z',
+        parentName: 'Nimali Perera',
+        whatsapp: '0771234567',
+        goodsTotal: 4160,
+        lineCount: 3,
+        linesSummary: 'Grade 5 pack, Pencil, Eraser',
+      }
+      const orders: AdminOrderJson[] = [
+        { ...base, id: 5, publicNumber: 1005, status: 'Cancelled', callAttemptedAt: null },
+        { ...base, id: 4, publicNumber: 1004, status: 'Delivered', callAttemptedAt: null },
+        { ...base, id: 3, publicNumber: 1003, status: 'Order Confirmed', callAttemptedAt: null },
+        { ...base, id: 2, publicNumber: 1002, status: 'Order Is Placed', callAttemptedAt: '2026-10-02T03:45:00.000Z' },
+        { ...base, id: 1, publicNumber: 1001, status: 'Order Is Placed', callAttemptedAt: null },
+      ]
+
+      assert.equal(placedAtCopy('2026-10-01T03:45:00.000Z'), '1 Oct 2026, 9:15 am')
+      assert.equal(placedAtCopy('2025-12-31T20:00:00.000Z'), '1 Jan 2026, 1:30 am')
+      // Same Colombo day: time only. An earlier Colombo day names the day too.
+      assert.equal(calledCopy('2026-10-02T13:05:00.000Z', Date.parse('2026-10-02T15:00:00.000Z')), 'Called 6:35 pm · no answer')
+      assert.equal(calledCopy('2026-10-02T13:05:00.000Z', Date.parse('2026-10-03T03:00:00.000Z')), 'Called 2 Oct, 6:35 pm · no answer')
+      // 19:00 UTC is already 3 Oct in Colombo, so the call was the day before.
+      assert.equal(calledCopy('2026-10-02T13:05:00.000Z', Date.parse('2026-10-02T19:00:00.000Z')), 'Called 2 Oct, 6:35 pm · no answer')
+      assert.equal(calledCopy('2025-10-02T13:05:00.000Z', Date.parse('2026-10-02T15:00:00.000Z')), 'Called 2 Oct, 6:35 pm · no answer')
+      assert.doesNotMatch(calledCopy('2026-10-02T13:05:00.000Z'), / {2}| ·$/)
+
+      const all = render(orders, null)
+      assert.doesNotMatch(all, /Add order/)
+      assert.ok(all.indexOf('>Open</h2>') < all.indexOf('>Past</h2>'))
+      const groupTitles = [...all.matchAll(/class="admin-order-group-title[^"]*">([^<]+)</g)].map((m) => m[1])
+      assert.deepEqual(groupTitles, ['Order Is Placed', 'Order Confirmed', 'Delivered', 'Cancelled'])
+      const counts = [...all.matchAll(/class="admin-order-group-count">(\d+)/g)].map((m) => m[1])
+      assert.deepEqual(counts, ['2', '1', '1', '1'])
+      // Open is oldest first inside a group.
+      const at1001 = all.search(/#(?:<!-- -->)?1001</)
+      const at1002 = all.search(/#(?:<!-- -->)?1002</)
+      assert.ok(at1001 >= 0 && at1001 < at1002, `${at1001} ${at1002}`)
+      assert.match(all, /1 Oct 2026, 9:15 am/)
+      assert.match(all, /0771234567 · 3 lines · Rs\. 4,160/)
+      assert.match(all, /class="admin-order-lines text-meta" title="Grade 5 pack, Pencil, Eraser"/)
+      assert.equal((all.match(/class="admin-order-row is-attention"/g) ?? []).length, 2)
+      assert.equal((all.match(/class="admin-order-row"/g) ?? []).length, 3)
+      // Two Placed rows, two different chips; nothing else carries a chip.
+      assert.equal((all.match(/admin-order-call admin-order-call-never/g) ?? []).length, 1)
+      assert.equal((all.match(/admin-order-call admin-order-call-attempted/g) ?? []).length, 1)
+      assert.match(all, /<span>Not called yet<\/span>/)
+      assert.match(all, /<span>Called 9:15 am · no answer<\/span>/)
+      const nextDay = render(orders, null, { now: Date.parse('2026-10-03T06:00:00.000Z') })
+      assert.match(nextDay, /<span>Called 2 Oct, 9:15 am · no answer<\/span>/)
+      const never = all.match(/admin-order-call-never">([\s\S]*?)<\/span><\/span>/)?.[1] ?? ''
+      const attempted = all.match(/admin-order-call-attempted">([\s\S]*?)<\/span><\/span>/)?.[1] ?? ''
+      assert.match(never, /<svg[^>]*aria-hidden="true"[\s\S]*<circle/)
+      assert.match(attempted, /<svg[^>]*aria-hidden="true"[^>]*fill="currentColor"[\s\S]*<path/)
+      assert.doesNotMatch(attempted, /<circle/)
+      // The filter: a labelled select with All plus the eight statuses in order.
+      assert.match(all, /<label class="text-label-caps" for="admin-order-status-filter">Status<\/label>/)
+      const options = [...all.matchAll(/<option value="([^"]*)"[^>]*>([^<]+)<\/option>/g)].map((m) => m[2])
+      assert.deepEqual(options, ['All statuses', 'Order Is Placed', 'Order Confirmed', 'Processing', 'Packing The Order', 'Ready To Deliver', 'On Delivery Partner', 'Delivered', 'Cancelled'])
+
+      const onlyPast = render(orders.filter((order) => order.id >= 4), null)
+      assert.match(onlyPast, /No open orders\./)
+      assert.doesNotMatch(onlyPast, /No past orders\./)
+      const onlyOpen = render(orders.filter((order) => order.id <= 3), null)
+      assert.match(onlyOpen, /No past orders\./)
+
+      const cancelled = render(orders, 'Cancelled')
+      assert.equal((cancelled.match(/<li class="admin-order-row/g) ?? []).length, 1)
+      assert.match(cancelled, /#(?:<!-- -->)?1005</)
+      assert.doesNotMatch(cancelled, /#(?:<!-- -->)?100[1-4]</)
+      assert.match(cancelled, /<option value="Cancelled" selected="">/)
+      assert.match(cancelled, />Past<\/h2>/)
+      assert.doesNotMatch(cancelled, />Open<\/h2>/)
+      assert.doesNotMatch(cancelled, /No open orders\./)
+      // The mirror: an open-status filter hides the Past section.
+      const confirmed = render(orders, 'Order Confirmed')
+      assert.match(confirmed, />Open<\/h2>/)
+      assert.doesNotMatch(confirmed, />Past<\/h2>/)
+      assert.doesNotMatch(confirmed, /No past orders\./)
+      assert.equal((confirmed.match(/<li class="admin-order-row/g) ?? []).length, 1)
+      assert.match(confirmed, /#(?:<!-- -->)?1003</)
+      // An unknown filter value means All.
+      assert.equal(render(orders, 'Lost in post'), all)
+
+      const filterEmpty = render(orders, 'Processing')
+      assert.match(filterEmpty, /No Processing orders\./)
+      assert.match(filterEmpty, /class="button-primary press-travel"[^>]*>Show all statuses</)
+      assert.doesNotMatch(filterEmpty, /admin-order-row/)
+      assert.doesNotMatch(filterEmpty, /disabled/)
+      assert.match(render(orders, 'Processing', { busy: true }), /<button type="button" class="button-primary press-travel" disabled="">Show all statuses</)
+
+      const none = render([], null)
+      assert.match(none, /class="admin-order-empty"/)
+      assert.match(none, /No orders yet\./)
+      assert.match(none, /class="button-primary press-travel"[^>]*>Refresh</)
+      assert.doesNotMatch(none, /admin-order-section/)
+    })
+
+    it('wires the migration, the route, the page, and token-only styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const adminHttp = await read(ordersDir, 'admin-http.ts')
+      const adminSql = await read(ordersDir, 'admin.ts')
+      const ordersIndex = await read(ordersDir, 'index.ts')
+      const api = await read(serverRoot, 'web', 'api.ts')
+      const runMigrationsSource = await read(serverRoot, 'db', 'migrations', 'run.ts')
+      const migration = await read(serverRoot, 'db', 'migrations', '011_orders_call_attempted.sql')
+      const adminSrc = path.join(repoRoot, 'client', 'admin', 'src')
+      const page = await read(adminSrc, 'OrdersPage.tsx')
+      const helper = await read(adminSrc, 'orders.ts')
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const shell = await read(adminSrc, 'Shell.tsx')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Migration 011: one nullable TEXT column, listed after 010.
+      assert.match(migration, /ALTER TABLE orders ADD COLUMN call_attempted_at TEXT;/)
+      assert.doesNotMatch(migration, /NOT NULL|DEFAULT/)
+      assert.ok(
+        runMigrationsSource.indexOf('010_orders_delivery_and_cancellation.sql') <
+          runMigrationsSource.indexOf('011_orders_call_attempted.sql'),
+      )
+
+      // Server: SQL in admin.ts only, orders tables only, nothing writes the call column.
+      assert.doesNotMatch(adminHttp, /db\.prepare/)
+      assert.match(adminHttp, /export function createAdminOrdersRouter/)
+      assert.match(adminHttp, /'\/admin\/orders',\s*safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)/)
+      assert.match(adminHttp, /function requireAdmin\(/)
+      assert.match(adminHttp, /Only the shop owner can see all orders\. Sign in as the shop owner to continue\./)
+      assert.match(adminSql, /export function listAdminOrders\(db: Database\.Database\)/)
+      assert.match(adminSql, /ORDER BY id DESC/)
+      assert.equal((adminSql.match(/db\s*\.prepare\(/g) ?? []).length, 3)
+      for (const file of await walkFiles(ordersDir)) {
+        if (!file.endsWith('.ts')) continue
+        const source = await readFile(file, 'utf8')
+        assert.doesNotMatch(source, /call_attempted_at\s*=/, `writes call_attempted_at in ${file}`)
+        assert.doesNotMatch(source, /(FROM|JOIN)\s+(?!orders\b|order_pack_lines\b|order_pack_line_books\b|order_item_lines\b)[a-z_]+\b/, `foreign table in ${file}`)
+      }
+      assert.match(ordersIndex, /export \{ createAdminOrdersRouter \} from '\.\/admin-http\.js'/)
+      assert.match(api, /router\.use\(createAdminOrdersRouter\(db, env\)\)/)
+      assert.ok(api.indexOf('createAdminOrdersRouter(db, env)') < api.indexOf('router.use((req, res)'))
+      assert.doesNotMatch(api + ordersIndex, /completed/i)
+
+      // Client: wired as the index route; the nav entry is unchanged.
+      assert.match(adminApp, /import \{ OrdersPage \} from '\.\/OrdersPage'/)
+      assert.match(adminApp, /<Route index element=\{<OrdersPage \/>\} \/>/)
+      assert.doesNotMatch(adminApp, /<Page title="Orders" \/>/)
+      assert.match(shell, /\{ to: '\/', label: 'Orders', end: true \}/)
+
+      // Page: no Add order, no storage, no status literals, no links or actions yet.
+      for (const source of [page, helper]) {
+        assert.doesNotMatch(source, /Add order/i)
+        assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/)
+        assert.doesNotMatch(
+          source,
+          /'(Order Is Placed|Order Confirmed|Processing|Packing The Order|Ready To Deliver|On Delivery Partner|Delivered|Cancelled)'/,
+        )
+        assert.doesNotMatch(source, /\.order-row|className="order-row/)
+      }
+      assert.doesNotMatch(page, /<Link|<NavLink|href=|method: 'POST'|method: 'PATCH'/)
+      assert.match(page, /useSearchParams/)
+      assert.match(page, /searchParams\.get\('status'\)/)
+      assert.match(page, /new AbortController\(\)/)
+      assert.match(page, /<Skeleton \/>/)
+      assert.match(page, /response\.status === 401\) \{\s*\/\/[^\n]*\s*setOrders\(\[\]\)\s*try \{\s*await signOutRef\.current\(\)\s*\} catch/)
+      assert.match(page, /withStatusFilter\(current, status\)/)
+      assert.match(page, /timeZone: 'Asia\/Colombo'/)
+      assert.match(page, /const SIGN_IN_AGAIN = 'Sign in to continue\.'/)
+      assert.match(page, /const UNREACHABLE = 'Could not reach the shop\. Try again\.'/)
+
+      // Styles: admin-order-* rules on tokens only, the attention edge, the chips, the reflow.
+      const rules = [...baseCss.matchAll(/(?:^|\n)[ \t]*([^{}\n]*\.admin-order[^{}]*)\{([^}]*)\}/g)]
+      assert.ok(rules.length >= 20, 'admin-order rules are missing')
+      for (const [, selector, body] of rules) {
+        assert.doesNotMatch(body, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(?:white|black)(?![\w-])/, `${selector.trim()} uses a raw colour`)
+        for (const color of body.matchAll(/(?:color|background|border[\w-]*):\s*([^;]+);/g)) {
+          assert.match(color[1], /var\(--|none|^0$|^\d+fr|^0 /, `${selector.trim()} ${color[0]}`)
+        }
+      }
+      assert.match(cssRule(baseCss, '.admin-order-row'), /grid-template-columns: 88px 1\.5fr 1\.1fr 152px auto/)
+      assert.match(cssRule(baseCss, '.admin-order-row'), /var\(--space-edge-hairline\) solid var\(--color-border-default\)/)
+      assert.match(cssRule(baseCss, '.admin-order-row'), /border-radius: var\(--radius-md\)/)
+      assert.match(cssRule(baseCss, '.admin-order-row'), /transition: border-color 160ms/)
+      const attention = cssRule(baseCss, '.admin-order-row.is-attention')
+      assert.match(attention, /border-color: var\(--color-border-strong\)/)
+      assert.match(attention, /border-left-width: var\(--space-2\)/)
+      // The thicker left edge comes out of the padding, so columns line up with normal rows.
+      assert.match(attention, /padding-left: calc\(var\(--space-3\) \+ var\(--space-edge-hairline\) \* 2 - var\(--space-2\)\)/)
+      assert.match(cssRule(baseCss, '.admin-order-row'), /padding: var\(--space-3\) calc\(var\(--space-3\) \+ var\(--space-edge-hairline\)\)/)
+      assert.match(cssRule(baseCss, '.admin-order-group-header'), /border-bottom: var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+      const count = cssRule(baseCss, '.admin-order-group-count')
+      assert.match(count, /background: var\(--color-accent-primary\)/)
+      assert.match(count, /border-radius: var\(--radius-full\)/)
+      const never = cssRule(baseCss, '.admin-order-call-never')
+      assert.match(never, /dashed var\(--color-border-default\)/)
+      const attempted = cssRule(baseCss, '.admin-order-call-attempted')
+      assert.match(attempted, /background: var\(--color-warn-tint\)/)
+      assert.match(attempted, /solid var\(--color-warning\)/)
+      assert.match(cssRule(baseCss, '.admin-order-lines'), /text-overflow: ellipsis/)
+      const empty = cssRule(baseCss, '.admin-order-empty')
+      assert.match(empty, /var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+      assert.match(empty, /var\(--radius-lg\)/)
+      // Below 900px: two lines, ID and pill then parent and call, targets kept at 44px.
+      const narrow = baseCss.slice(baseCss.indexOf('.admin-order-empty-title'))
+      const reflow = narrow.slice(narrow.indexOf('@media (max-width: 899px)'))
+      assert.match(reflow, /'id status'\s*'parent call'/)
+      assert.match(reflow, /min-height: var\(--space-touch-min\)/)
     })
   })
 })

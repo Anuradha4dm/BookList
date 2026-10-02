@@ -70,3 +70,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-3-a-cart-that-persists-totals-and-can-be-emptied.md`
   summary: The 1–20 quantity stepper markup and cap copy are now duplicated across PackPage, ItemsPage, and CartPage; extract one shared stepper component and copy constant.
   evidence: Three hand-copied stepper implementations already differ in where the cap notice sits, so they can drift.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-4-admin-orders-one-list-open-and-past.md`
+  summary: Client page load behaviour (the 401, 403, 500, malformed-body and network branches, and keeping the last good list on a failed refresh) is pinned only by source-text regexes, because the repo has no DOM test harness (jsdom or Testing Library) that can mount a page.
+  evidence: The 4.4 review found that `OrdersPage.load` could regress, for example by blanking the list on a failed Refresh, with every io-matrix assertion still passing. The same gap applies to every earlier admin and storefront page.

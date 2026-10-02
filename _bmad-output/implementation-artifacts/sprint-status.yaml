@@ -78,8 +78,8 @@ development_status:
   epic-4: in-progress
   4-1-checkout-address-delivery-line-note-and-stale-lines: done
   4-2-place-order-snapshot-number-one-tap: done
-  4-3-my-orders-pipeline-cancel-and-reason: review
-  4-4-admin-orders-one-list-open-and-past: backlog
+  4-3-my-orders-pipeline-cancel-and-reason: done
+  4-4-admin-orders-one-list-open-and-past: review
   4-5-confirm-the-order-and-mark-the-call: backlog
   4-6-advance-skip-forward-and-close-the-order: backlog
   4-7-export-the-season: backlog
