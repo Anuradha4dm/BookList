@@ -125,3 +125,156 @@ export function adminOrderSections(
 export function isPastStatus(status: OrderStatus): boolean {
   return PAST_STATUSES.includes(status)
 }
+
+/** The client route of one order's detail, under the `/admin` basename. */
+export function adminOrderRoute(id: number): string {
+  return `/orders/${id}`
+}
+
+export function adminOrderPath(id: number): string {
+  return `/api/admin/orders/${id}`
+}
+
+export function adminOrderCallAttemptedPath(id: number): string {
+  return `/api/admin/orders/${id}/call-attempted`
+}
+
+export function adminOrderConfirmPath(id: number): string {
+  return `/api/admin/orders/${id}/confirm`
+}
+
+/** The same copy the server answers for a bad delivery price. */
+export const DELIVERY_PRICE_MESSAGE = 'Enter the delivery charge in whole rupees, Rs. 0 or more.'
+
+/** Whole rupees from the field's digits, or undefined when it is empty or not a safe integer. */
+export function deliveryPriceFrom(text: string): number | undefined {
+  if (!/^\d+$/.test(text)) return undefined
+  const value = Number(text)
+  return Number.isSafeInteger(value) ? value : undefined
+}
+
+export function confirmBody(deliveryPrice: number): { deliveryPrice: number } {
+  return { deliveryPrice }
+}
+
+export type AdminOrderPackLine = {
+  packName: string
+  label: string
+  gradeName: string
+  lineTotal: number
+  books: Array<{ title: string; unitPrice: number; quantity: number }>
+}
+
+export type AdminOrderItemLine = {
+  title: string
+  unitPrice: number
+  quantity: number
+  lineTotal: number
+}
+
+/** `GET /api/admin/orders/:id`: the parent's detail plus snapshot contacts and the call mark. */
+export type AdminOrderDetail = {
+  id: number
+  publicNumber: number
+  status: OrderStatus
+  placedAt: string
+  goodsTotal: number
+  deliveryPrice: number | null
+  payableTotal: number | null
+  note: string | null
+  deliveryAddress: string
+  cancellation: { by: 'parent' | 'admin'; reason: string | null; at: string | null } | null
+  packLines: AdminOrderPackLine[]
+  itemLines: AdminOrderItemLine[]
+  parentName: string
+  whatsapp: string
+  secondPhone: string | null
+  callAttemptedAt: string | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isNumberOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'number'
+}
+
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'string'
+}
+
+function isPackBook(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.title === 'string' &&
+    typeof value.unitPrice === 'number' &&
+    typeof value.quantity === 'number'
+  )
+}
+
+function isPackLine(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.packName === 'string' &&
+    typeof value.label === 'string' &&
+    typeof value.gradeName === 'string' &&
+    typeof value.lineTotal === 'number' &&
+    Array.isArray(value.books) &&
+    value.books.every(isPackBook)
+  )
+}
+
+function isItemLine(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.title === 'string' &&
+    typeof value.unitPrice === 'number' &&
+    typeof value.quantity === 'number' &&
+    typeof value.lineTotal === 'number'
+  )
+}
+
+function isCancellation(value: unknown): boolean {
+  if (value === null) return true
+  return (
+    isRecord(value) &&
+    (value.by === 'parent' || value.by === 'admin') &&
+    isStringOrNull(value.reason) &&
+    isStringOrNull(value.at)
+  )
+}
+
+/**
+ * Reads `{ order }` from a detail, call or confirm answer, down to every line and book, or
+ * undefined when any part is not that shape (an unknown status included).
+ */
+export function parseAdminOrderDetail(body: unknown): AdminOrderDetail | undefined {
+  const order = (body as { order?: unknown } | null)?.order
+  if (!isRecord(order)) return undefined
+  const o = order
+  if (
+    typeof o.id !== 'number' ||
+    typeof o.publicNumber !== 'number' ||
+    typeof o.status !== 'string' ||
+    !isOrderStatus(o.status) ||
+    typeof o.placedAt !== 'string' ||
+    typeof o.goodsTotal !== 'number' ||
+    !isNumberOrNull(o.deliveryPrice) ||
+    !isNumberOrNull(o.payableTotal) ||
+    !isStringOrNull(o.note) ||
+    typeof o.deliveryAddress !== 'string' ||
+    !isCancellation(o.cancellation) ||
+    !Array.isArray(o.packLines) ||
+    !o.packLines.every(isPackLine) ||
+    !Array.isArray(o.itemLines) ||
+    !o.itemLines.every(isItemLine) ||
+    typeof o.parentName !== 'string' ||
+    typeof o.whatsapp !== 'string' ||
+    !isStringOrNull(o.secondPhone) ||
+    !isStringOrNull(o.callAttemptedAt)
+  ) {
+    return undefined
+  }
+  return order as AdminOrderDetail
+}

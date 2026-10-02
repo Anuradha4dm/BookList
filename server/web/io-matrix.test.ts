@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router'
 import { profileDraftFromGet, profilePatchBody } from '../../client/storefront/src/accountProfile.ts'
 import {
   parentsFindQuery,
@@ -29,8 +30,16 @@ import {
   itemsItemPath,
 } from '../../client/admin/src/items.ts'
 import {
+  DELIVERY_PRICE_MESSAGE,
+  adminOrderCallAttemptedPath,
+  adminOrderConfirmPath,
+  adminOrderPath,
+  adminOrderRoute,
   adminOrderSections,
   adminOrdersPath,
+  confirmBody,
+  deliveryPriceFrom,
+  parseAdminOrderDetail,
   parseAdminOrders,
   statusFilterFrom,
   withStatusFilter,
@@ -192,6 +201,8 @@ const ORDERS_DETAIL_PORT = String(18784)
 const ordersDetailBaseUrl = `http://127.0.0.1:${ORDERS_DETAIL_PORT}`
 const ADMIN_ORDERS_PORT = String(18785)
 const adminOrdersBaseUrl = `http://127.0.0.1:${ADMIN_ORDERS_PORT}`
+const ADMIN_DETAIL_PORT = String(18786)
+const adminDetailBaseUrl = `http://127.0.0.1:${ADMIN_DETAIL_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -10335,16 +10346,21 @@ describe('I/O & edge-case matrix', () => {
       const noop = () => {}
       // The same Colombo day as the attempted call below (2 Oct, 9:15 am).
       const sameDay = Date.parse('2026-10-02T06:00:00.000Z')
+      // Rows are links since 4.5, so the board renders inside a router.
       const render = (orders: AdminOrderJson[], filter: string | null, extra: { now?: number; busy?: boolean } = {}) =>
         renderToStaticMarkup(
-          React.createElement(AdminOrdersBoard, {
-            orders,
-            filter: statusFilterFrom(filter),
-            now: extra.now ?? sameDay,
-            busy: extra.busy,
-            onFilterChange: noop,
-            onRefresh: noop,
-          }),
+          React.createElement(
+            MemoryRouter,
+            null,
+            React.createElement(AdminOrdersBoard, {
+              orders,
+              filter: statusFilterFrom(filter),
+              now: extra.now ?? sameDay,
+              busy: extra.busy,
+              onFilterChange: noop,
+              onRefresh: noop,
+            }),
+          ),
         )
       const base = {
         publicNumber: 1042,
@@ -10476,11 +10492,17 @@ describe('I/O & edge-case matrix', () => {
       assert.match(adminHttp, /Only the shop owner can see all orders\. Sign in as the shop owner to continue\./)
       assert.match(adminSql, /export function listAdminOrders\(db: Database\.Database\)/)
       assert.match(adminSql, /ORDER BY id DESC/)
-      assert.equal((adminSql.match(/db\s*\.prepare\(/g) ?? []).length, 3)
+      // The list itself is still one orders read plus one read per line table (4.5 adds more below it).
+      const listBody = adminSql.slice(adminSql.indexOf('export function listAdminOrders'))
+      const listFn = listBody.slice(0, listBody.search(/\r?\n\}\r?\n/) + 2)
+      assert.equal((listFn.match(/db\s*\.prepare\(/g) ?? []).length, 3)
       for (const file of await walkFiles(ordersDir)) {
         if (!file.endsWith('.ts')) continue
         const source = await readFile(file, 'utf8')
-        assert.doesNotMatch(source, /call_attempted_at\s*=/, `writes call_attempted_at in ${file}`)
+        // Only the 4.5 call mark in admin.ts writes the call column.
+        if (path.basename(file) !== 'admin.ts') {
+          assert.doesNotMatch(source, /call_attempted_at\s*=/, `writes call_attempted_at in ${file}`)
+        }
         assert.doesNotMatch(source, /(FROM|JOIN)\s+(?!orders\b|order_pack_lines\b|order_pack_line_books\b|order_item_lines\b)[a-z_]+\b/, `foreign table in ${file}`)
       }
       assert.match(ordersIndex, /export \{ createAdminOrdersRouter \} from '\.\/admin-http\.js'/)
@@ -10504,7 +10526,11 @@ describe('I/O & edge-case matrix', () => {
         )
         assert.doesNotMatch(source, /\.order-row|className="order-row/)
       }
-      assert.doesNotMatch(page, /<Link|<NavLink|href=|method: 'POST'|method: 'PATCH'/)
+      // Rows link to the 4.5 detail and nowhere else; the list itself still sends nothing.
+      assert.doesNotMatch(page, /<NavLink|href=|method: 'POST'|method: 'PATCH'/)
+      assert.deepEqual([...page.matchAll(/<Link\b[^>]*>/g)].map((m) => m[0]), [
+        '<Link className="admin-order-row-link" to={adminOrderRoute(order.id)}>',
+      ])
       assert.match(page, /useSearchParams/)
       assert.match(page, /searchParams\.get\('status'\)/)
       assert.match(page, /new AbortController\(\)/)
@@ -10552,6 +10578,831 @@ describe('I/O & edge-case matrix', () => {
       const reflow = narrow.slice(narrow.indexOf('@media (max-width: 899px)'))
       assert.match(reflow, /'id status'\s*'parent call'/)
       assert.match(reflow, /min-height: var\(--space-touch-min\)/)
+    })
+  })
+
+  describe('Admin order detail — confirm and mark the call', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parentSerial = 0
+
+    type Line = { title: string; unitPrice: number; quantity: number; lineTotal: number }
+    type AdminDetailJson = {
+      id: number
+      publicNumber: number
+      status: string
+      placedAt: string
+      goodsTotal: number
+      deliveryPrice: number | null
+      payableTotal: number | null
+      note: string | null
+      deliveryAddress: string
+      cancellation: { by: string; reason: string | null; at: string | null } | null
+      packLines: Array<{
+        packName: string
+        label: string
+        gradeName: string
+        lineTotal: number
+        books: Array<{ title: string; unitPrice: number; quantity: number }>
+      }>
+      itemLines: Line[]
+      parentName: string
+      whatsapp: string
+      secondPhone: string | null
+      callAttemptedAt: string | null
+    }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+    type Parent = {
+      cookie: string
+      id: number
+      name: string
+      whatsapp: string
+      secondPhone: string | null
+      address: string
+    }
+    type Placed = { id: number; publicNumber: number; packName: string; bookTitle: string; itemTitles: [string, string] }
+
+    const FORBIDDEN = 'Only the shop owner can see all orders. Sign in as the shop owner to continue.'
+    const PRICE_MESSAGE = 'Enter the delivery charge in whole rupees, Rs. 0 or more.'
+    const NOT_CALLABLE = 'This order is no longer waiting for a call.'
+    const CANCELLED_FIRST = "The parent cancelled this order before your confirm arrived, so it can't be confirmed."
+    const ALREADY_CONFIRMED = "This order is already Order Confirmed, so it can't be confirmed again."
+    const DETAIL_KEYS = [
+      'callAttemptedAt',
+      'cancellation',
+      'deliveryAddress',
+      'deliveryPrice',
+      'goodsTotal',
+      'id',
+      'itemLines',
+      'note',
+      'packLines',
+      'parentName',
+      'payableTotal',
+      'placedAt',
+      'publicNumber',
+      'secondPhone',
+      'status',
+      'whatsapp',
+    ]
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${adminDetailBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(pathName: string, body: unknown): Promise<{ id: number; title?: string }> {
+      const response = await fetch(`${adminDetailBaseUrl}${pathName}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: JSON.stringify(body),
+      })
+      assert.equal(response.status, 201, `POST ${pathName}: ${response.status}`)
+      return (await response.json()) as { id: number; title?: string }
+    }
+
+    async function registerParent(tag: string, secondPhone: string | null): Promise<Parent> {
+      parentSerial += 1
+      const email = `admin-detail.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const name = `Admin detail ${tag}`
+      const address = `${parentSerial} Lake Road, Maharagama`
+      const response = await fetch(`${adminDetailBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          deliveryAddress: address,
+          whatsapp: `0771111${String(100 + parentSerial).slice(-3)}`,
+          secondPhone: secondPhone ?? '',
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const stored = readDb(
+        (db) =>
+          db.prepare('SELECT id, whatsapp, second_phone FROM parents WHERE email = ?').get(email) as {
+            id: number
+            whatsapp: string
+            second_phone: string | null
+          },
+      )
+      return {
+        cookie: cookieHeader(cookie),
+        id: stored.id,
+        name,
+        whatsapp: stored.whatsapp,
+        secondPhone: stored.second_phone,
+        address,
+      }
+    }
+
+    /** One pack (one book, Rs. 1,500) plus two items (Rs. 120 and Rs. 60), then Place: goods 1680. */
+    async function placeOne(parent: Parent, tag: string, note?: string): Promise<Placed> {
+      const s = `${Date.now()}-${tag}`
+      const schoolId = (await adminSend('/api/admin/schools', catalogNameBody(`Detail school ${s}`))).id
+      const gradeId = (await adminSend('/api/admin/grades', catalogNameBody(`Grade ${s}`))).id
+      const bookTitle = `Atlas ${s}`
+      const book = await adminSend('/api/admin/books', bookBody(bookTitle, 1500))
+      const packName = `Detail pack ${s}`
+      const pack = await adminSend('/api/admin/packs', packCreateBody(packName, schoolId, gradeId, 'Detail', [book.id]))
+      const itemTitles: [string, string] = [`Pencil ${s}`, `Eraser ${s}`]
+      const items = [
+        await adminSend('/api/admin/items', itemBody(itemTitles[0], 'Stationery', 120)),
+        await adminSend('/api/admin/items', itemBody(itemTitles[1], 'Stationery', 60)),
+      ]
+      const packResponse = await fetch(`${adminDetailBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${book.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      for (const item of items) {
+        const itemResponse = await fetch(`${adminDetailBaseUrl}/api/cart/items`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: parent.cookie },
+          body: JSON.stringify({ itemId: item.id, quantity: 1 }),
+        })
+        assert.ok(itemResponse.status === 201 || itemResponse.status === 200, `add item ${itemResponse.status}`)
+      }
+      const response = await fetch(`${adminDetailBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: parent.cookie,
+          'Idempotency-Key': `admin-detail-${s}`,
+        },
+        body: JSON.stringify(note === undefined ? {} : { note }),
+      })
+      assert.equal(response.status, 201)
+      const order = ((await response.json()) as { order: { id: number; publicNumber: number } }).order
+      return { id: order.id, publicNumber: order.publicNumber, packName, bookTitle, itemTitles }
+    }
+
+    function getDetail(cookie: string | undefined, id: number | string): Promise<Response> {
+      return fetch(`${adminDetailBaseUrl}/api/admin/orders/${id}`, { headers: cookie ? { cookie } : {} })
+    }
+
+    function markCall(cookie: string | undefined, id: number | string): Promise<Response> {
+      return fetch(`${adminDetailBaseUrl}/api/admin/orders/${id}/call-attempted`, {
+        method: 'POST',
+        headers: cookie ? { cookie } : {},
+      })
+    }
+
+    function confirm(cookie: string | undefined, id: number | string, body: unknown): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      return fetch(`${adminDetailBaseUrl}/api/admin/orders/${id}/confirm`, {
+        method: 'POST',
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+    }
+
+    function parentCancel(parent: Parent, id: number): Promise<Response> {
+      return fetch(`${adminDetailBaseUrl}/api/orders/${id}/cancel`, {
+        method: 'POST',
+        headers: { cookie: parent.cookie },
+      })
+    }
+
+    async function okOrder(response: Response): Promise<AdminDetailJson> {
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as { order: AdminDetailJson }
+      assert.deepEqual(Object.keys(body), ['order'])
+      return body.order
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    function orderRow(id: number): Record<string, unknown> {
+      return readDb((db) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown>)
+    }
+
+    /** The order row plus every snapshot line, so a frozen order can be compared whole. */
+    function snapshotOf(id: number): unknown {
+      return readDb((db) => ({
+        order: db.prepare('SELECT * FROM orders WHERE id = ?').get(id),
+        packs: db.prepare('SELECT * FROM order_pack_lines WHERE order_id = ? ORDER BY id').all(id),
+        books: db
+          .prepare(
+            `SELECT b.* FROM order_pack_line_books b JOIN order_pack_lines l ON l.id = b.line_id
+             WHERE l.order_id = ? ORDER BY b.rowid`,
+          )
+          .all(id),
+        items: db.prepare('SELECT * FROM order_item_lines WHERE order_id = ? ORDER BY id').all(id),
+      }))
+    }
+
+    async function expectRefused(
+      response: Response,
+      status: number,
+      code: string,
+      message?: string,
+      field?: string,
+    ): Promise<void> {
+      assert.equal(response.status, status)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, code)
+      if (message !== undefined) assert.equal(body.error.message, message)
+      if (field !== undefined) assert.equal(body.error.field, field)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-admin-detail-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ADMIN_DETAIL_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    let withPhone: Parent
+    let withoutPhone: Parent
+    let noted: Placed
+    let realAnswer: unknown
+
+    it('auth / id: 401 without a cookie, 403 for a parent, 404 for a bad or unknown id', async () => {
+      withPhone = await registerParent('phone', '0712345678')
+      const order = await placeOne(withPhone, 'auth')
+      for (const send of [
+        (cookie?: string) => getDetail(cookie, order.id),
+        (cookie?: string) => markCall(cookie, order.id),
+        (cookie?: string) => confirm(cookie, order.id, { deliveryPrice: 350 }),
+      ]) {
+        await expectRefused(await send(undefined), 401, 'unauthenticated')
+        await expectRefused(await send(withPhone.cookie), 403, 'forbidden', FORBIDDEN)
+      }
+      for (const id of ['abc', '0', '-1', '1.5', '01', '999999', '99999999999999999999']) {
+        await expectRefused(await getDetail(adminCookie, id), 404, 'not_found', 'Order not found.')
+        await expectRefused(await markCall(adminCookie, id), 404, 'not_found', 'Order not found.')
+        await expectRefused(await confirm(adminCookie, id, { deliveryPrice: 350 }), 404, 'not_found', 'Order not found.')
+      }
+      // Nothing above touched the order.
+      assert.equal(orderRow(order.id).status, 'Order Is Placed')
+      assert.equal(orderRow(order.id).call_attempted_at, null)
+    })
+
+    it('detail: the snapshot contacts, address, note, lines and goods total survive a rename', async () => {
+      noted = await placeOne(withPhone, 'noted', 'Ring the side gate')
+      const rename = await fetch(`${adminDetailBaseUrl}/api/parents/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: withPhone.cookie },
+        body: JSON.stringify({
+          name: 'Renamed detail parent',
+          deliveryAddress: '1 New Road, Colombo',
+          whatsapp: '0779999999',
+          secondPhone: '0718888888',
+          password: '',
+        }),
+      })
+      assert.equal(rename.status, 200)
+      const order = await okOrder(await getDetail(adminCookie, noted.id))
+      realAnswer = { order }
+      assert.deepEqual(Object.keys(order).sort(), DETAIL_KEYS)
+      assert.equal(order.parentName, withPhone.name)
+      assert.equal(order.whatsapp, withPhone.whatsapp)
+      assert.ok(withPhone.secondPhone)
+      assert.equal(order.secondPhone, withPhone.secondPhone)
+      assert.equal(order.deliveryAddress, withPhone.address)
+      assert.equal(order.note, 'Ring the side gate')
+      assert.equal(order.status, 'Order Is Placed')
+      assert.equal(order.publicNumber, noted.publicNumber)
+      assert.equal(order.goodsTotal, 1680)
+      assert.equal(order.deliveryPrice, null)
+      assert.equal(order.payableTotal, null)
+      assert.equal(order.callAttemptedAt, null)
+      assert.equal(order.cancellation, null)
+      assert.equal(order.packLines.length, 1)
+      assert.equal(order.packLines[0].packName, noted.packName)
+      assert.deepEqual(order.packLines[0].books, [{ title: noted.bookTitle, unitPrice: 1500, quantity: 1 }])
+      assert.deepEqual(
+        order.itemLines.map((line) => [line.title, line.unitPrice, line.quantity, line.lineTotal]),
+        [
+          [noted.itemTitles[0], 120, 1, 120],
+          [noted.itemTitles[1], 60, 1, 60],
+        ],
+      )
+      // The 4.3 detail is reused, not copied: the admin answer is the parent's plus four fields.
+      const parentAnswer = await fetch(`${adminDetailBaseUrl}/api/orders/${noted.id}`, {
+        headers: { cookie: withPhone.cookie },
+      })
+      assert.equal(parentAnswer.status, 200)
+      const parentOrder = ((await parentAnswer.json()) as { order: Record<string, unknown> }).order
+      const { parentName, whatsapp, secondPhone, callAttemptedAt, ...rest } = order
+      void parentName
+      void whatsapp
+      void secondPhone
+      void callAttemptedAt
+      assert.deepEqual(rest, parentOrder)
+    })
+
+    it('no second phone: secondPhone is null and no note is null', async () => {
+      withoutPhone = await registerParent('nophone', null)
+      assert.equal(withoutPhone.secondPhone, null)
+      const placed = await placeOne(withoutPhone, 'nophone')
+      const order = await okOrder(await getDetail(adminCookie, placed.id))
+      assert.equal(order.secondPhone, null)
+      assert.equal(order.note, null)
+      assert.equal(order.parentName, withoutPhone.name)
+    })
+
+    it('mark call: sets callAttemptedAt, and a second call writes a later time', async () => {
+      const placed = await placeOne(withoutPhone, 'call')
+      const before = Date.now()
+      const first = await okOrder(await markCall(adminCookie, placed.id))
+      assert.ok(first.callAttemptedAt)
+      assert.match(first.callAttemptedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+      assert.ok(Date.parse(first.callAttemptedAt) >= before - 1000)
+      assert.equal(first.status, 'Order Is Placed')
+      assert.equal(orderRow(placed.id).call_attempted_at, first.callAttemptedAt)
+      await new Promise((resolve) => setTimeout(resolve, 15))
+      const second = await okOrder(await markCall(adminCookie, placed.id))
+      assert.ok(second.callAttemptedAt)
+      assert.ok(Date.parse(second.callAttemptedAt) > Date.parse(first.callAttemptedAt))
+      assert.equal(orderRow(placed.id).call_attempted_at, second.callAttemptedAt)
+      // The detail reads the same mark back; the 4.4 list carries it too.
+      assert.equal((await okOrder(await getDetail(adminCookie, placed.id))).callAttemptedAt, second.callAttemptedAt)
+      const list = (await (await fetch(`${adminDetailBaseUrl}/api/admin/orders`, { headers: { cookie: adminCookie } })).json()) as {
+        orders: Array<{ id: number; callAttemptedAt: string | null }>
+      }
+      assert.equal(list.orders.find((entry) => entry.id === placed.id)?.callAttemptedAt, second.callAttemptedAt)
+    })
+
+    it('mark call, late: a Confirmed or Cancelled order is a 409 and the row is unchanged', async () => {
+      const confirmed = await placeOne(withoutPhone, 'late-confirmed')
+      await okOrder(await confirm(adminCookie, confirmed.id, { deliveryPrice: 200 }))
+      const cancelled = await placeOne(withoutPhone, 'late-cancelled')
+      assert.equal((await parentCancel(withoutPhone, cancelled.id)).status, 200)
+      for (const id of [confirmed.id, cancelled.id]) {
+        const before = orderRow(id)
+        await expectRefused(await markCall(adminCookie, id), 409, 'order_not_callable', NOT_CALLABLE)
+        assert.deepEqual(orderRow(id), before)
+        assert.equal(before.call_attempted_at, null)
+      }
+    })
+
+    it('confirm: goods 1680 plus delivery 350 is Order Confirmed with a payable of 2030', async () => {
+      const placed = await placeOne(withPhone, 'confirm')
+      const order = await okOrder(await confirm(adminCookie, placed.id, { deliveryPrice: 350 }))
+      assert.deepEqual(Object.keys(order).sort(), DETAIL_KEYS)
+      assert.equal(order.status, 'Order Confirmed')
+      assert.equal(order.deliveryPrice, 350)
+      assert.equal(order.payableTotal, 2030)
+      assert.equal(order.goodsTotal, 1680)
+      const row = orderRow(placed.id)
+      assert.equal(row.status, 'Order Confirmed')
+      assert.equal(row.delivery_price_rupees, 350)
+      assert.equal(row.payable_total_rupees, 2030)
+      // The parent now sees the same figures.
+      const parentAnswer = await fetch(`${adminDetailBaseUrl}/api/orders/${placed.id}`, { headers: { cookie: withPhone.cookie } })
+      const parentOrder = ((await parentAnswer.json()) as { order: AdminDetailJson }).order
+      assert.equal(parentOrder.deliveryPrice, 350)
+      assert.equal(parentOrder.payableTotal, 2030)
+    })
+
+    it('confirm, free delivery: Rs. 0 makes the payable total the goods total', async () => {
+      const placed = await placeOne(withoutPhone, 'free')
+      const order = await okOrder(await confirm(adminCookie, placed.id, { deliveryPrice: 0 }))
+      assert.equal(order.status, 'Order Confirmed')
+      assert.equal(order.deliveryPrice, 0)
+      assert.equal(order.payableTotal, 1680)
+    })
+
+    it('bad price: -1, "350", 12.5, missing and friends are a 400 and the row is unchanged', async () => {
+      const placed = await placeOne(withoutPhone, 'bad-price')
+      const before = orderRow(placed.id)
+      for (const body of [
+        { deliveryPrice: -1 },
+        { deliveryPrice: '350' },
+        { deliveryPrice: 12.5 },
+        {},
+        { deliveryPrice: null },
+        { deliveryPrice: true },
+        { deliveryPrice: [350] },
+        { deliveryPrice: 2 ** 53 },
+        { deliveryPrice: '' },
+        undefined,
+      ]) {
+        await expectRefused(await confirm(adminCookie, placed.id, body), 400, 'invalid_input', PRICE_MESSAGE, 'deliveryPrice')
+        assert.deepEqual(orderRow(placed.id), before)
+      }
+    })
+
+    it('bad price, overflow: a delivery price that pushes the payable past the safe range is a 400', async () => {
+      const placed = await placeOne(withoutPhone, 'overflow')
+      const before = orderRow(placed.id)
+      await expectRefused(
+        await confirm(adminCookie, placed.id, { deliveryPrice: 2 ** 53 - 1 }),
+        400,
+        'invalid_input',
+        PRICE_MESSAGE,
+        'deliveryPrice',
+      )
+      assert.deepEqual(orderRow(placed.id), before)
+      // The largest price that still fits is accepted, and the total is exact.
+      const fits = Number.MAX_SAFE_INTEGER - 1680
+      const order = await okOrder(await confirm(adminCookie, placed.id, { deliveryPrice: fits }))
+      assert.equal(order.payableTotal, Number.MAX_SAFE_INTEGER)
+    })
+
+    it('already cancelled (T8): the confirm is told the parent cancelled first; no payable appears', async () => {
+      const placed = await placeOne(withoutPhone, 'cancelled-first')
+      assert.equal((await parentCancel(withoutPhone, placed.id)).status, 200)
+      await expectRefused(await confirm(adminCookie, placed.id, { deliveryPrice: 350 }), 409, 'order_not_confirmable', CANCELLED_FIRST)
+      const row = orderRow(placed.id)
+      assert.equal(row.status, 'Cancelled')
+      assert.equal(row.payable_total_rupees, null)
+      assert.equal(row.delivery_price_rupees, null)
+    })
+
+    it('race (T8): a parent cancel and an admin confirm in parallel commit exactly once', async () => {
+      const outcomes = new Set<string>()
+      for (let round = 0; round < 6; round += 1) {
+        const placed = await placeOne(withoutPhone, `race-${round}`)
+        const [cancelled, confirmed] = await Promise.all([
+          parentCancel(withoutPhone, placed.id),
+          confirm(adminCookie, placed.id, { deliveryPrice: 350 }),
+        ])
+        assert.deepEqual([cancelled.status, confirmed.status].sort(), [200, 409])
+        const row = orderRow(placed.id)
+        if (confirmed.status === 200) {
+          outcomes.add('confirm')
+          assert.equal(row.status, 'Order Confirmed')
+          assert.equal(row.payable_total_rupees, 2030)
+          const loser = (await cancelled.json()) as ErrorBody
+          assert.equal(loser.error.code, 'order_not_cancellable')
+        } else {
+          outcomes.add('cancel')
+          assert.equal(row.status, 'Cancelled')
+          assert.equal(row.payable_total_rupees, null)
+          assert.equal(row.delivery_price_rupees, null)
+          const loser = (await confirmed.json()) as ErrorBody
+          assert.equal(loser.error.code, 'order_not_confirmable')
+          assert.equal(loser.error.message, CANCELLED_FIRST)
+        }
+      }
+      assert.ok(outcomes.size >= 1)
+    })
+
+    it('stale (T7): a second confirm is a 409 and the first price is kept', async () => {
+      const placed = await placeOne(withoutPhone, 'stale')
+      await okOrder(await confirm(adminCookie, placed.id, { deliveryPrice: 350 }))
+      await expectRefused(await confirm(adminCookie, placed.id, { deliveryPrice: 500 }), 409, 'order_not_confirmable', ALREADY_CONFIRMED)
+      const row = orderRow(placed.id)
+      assert.equal(row.delivery_price_rupees, 350)
+      assert.equal(row.payable_total_rupees, 2030)
+      // Two confirms at once: one wins, the other is told the order is already confirmed.
+      const again = await placeOne(withoutPhone, 'stale-double')
+      const [first, second] = await Promise.all([
+        confirm(adminCookie, again.id, { deliveryPrice: 100 }),
+        confirm(adminCookie, again.id, { deliveryPrice: 900 }),
+      ])
+      assert.deepEqual([first.status, second.status].sort(), [200, 409])
+      const winner = first.status === 200 ? first : second
+      const price = ((await winner.json()) as { order: AdminDetailJson }).order.deliveryPrice
+      assert.equal(orderRow(again.id).delivery_price_rupees, price)
+      // Any later status names itself.
+      const later = await placeOne(withoutPhone, 'stale-processing')
+      await okOrder(await confirm(adminCookie, later.id, { deliveryPrice: 50 }))
+      const db = new Database(dbPath)
+      try {
+        db.prepare("UPDATE orders SET status = 'Processing' WHERE id = ?").run(later.id)
+      } finally {
+        db.close()
+      }
+      await expectRefused(
+        await confirm(adminCookie, later.id, { deliveryPrice: 60 }),
+        409,
+        'order_not_confirmable',
+        "This order is already Processing, so it can't be confirmed again.",
+      )
+      assert.equal(orderRow(later.id).delivery_price_rupees, 50)
+    })
+
+    it('frozen (T9): after confirm, a parent cancel, a second confirm and a call mark change nothing', async () => {
+      const placed = await placeOne(withPhone, 'frozen', 'Leave with the guard')
+      await okOrder(await confirm(adminCookie, placed.id, { deliveryPrice: 350 }))
+      const frozen = snapshotOf(placed.id)
+      await expectRefused(await parentCancel(withPhone, placed.id), 409, 'order_not_cancellable')
+      await expectRefused(await confirm(adminCookie, placed.id, { deliveryPrice: 1 }), 409, 'order_not_confirmable', ALREADY_CONFIRMED)
+      await expectRefused(await markCall(adminCookie, placed.id), 409, 'order_not_callable', NOT_CALLABLE)
+      assert.deepEqual(snapshotOf(placed.id), frozen)
+    })
+
+    it('client: the paths, the strict detail parser, and the delivery price rule', () => {
+      assert.equal(adminOrderRoute(7), '/orders/7')
+      assert.equal(adminOrderPath(7), '/api/admin/orders/7')
+      assert.equal(adminOrderCallAttemptedPath(7), '/api/admin/orders/7/call-attempted')
+      assert.equal(adminOrderConfirmPath(7), '/api/admin/orders/7/confirm')
+      assert.deepEqual(confirmBody(350), { deliveryPrice: 350 })
+      assert.equal(DELIVERY_PRICE_MESSAGE, PRICE_MESSAGE)
+      assert.equal(deliveryPriceFrom('350'), 350)
+      assert.equal(deliveryPriceFrom('0'), 0)
+      for (const text of ['', ' ', '-1', '12.5', '3e2', 'abc', '99999999999999999999']) {
+        assert.equal(deliveryPriceFrom(text), undefined, text)
+      }
+
+      const parsed = parseAdminOrderDetail(realAnswer)
+      assert.ok(parsed)
+      assert.deepEqual(parsed, (realAnswer as { order: unknown }).order)
+      const good = parsed
+      assert.equal(parseAdminOrderDetail(null), undefined)
+      assert.equal(parseAdminOrderDetail({}), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, status: 'Lost in post' } }), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, secondPhone: 7 } }), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, callAttemptedAt: undefined } }), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, parentName: undefined } }), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, payableTotal: '2030' } }), undefined)
+      assert.equal(parseAdminOrderDetail({ order: { ...good, itemLines: [{ title: 'x' }] } }), undefined)
+      assert.equal(
+        parseAdminOrderDetail({ order: { ...good, packLines: [{ ...good.packLines[0], books: [{ title: 1 }] }] } }),
+        undefined,
+      )
+      assert.deepEqual(parseAdminOrderDetail({ order: { ...good, secondPhone: null } })?.secondPhone, null)
+    })
+
+    it('render: contacts with and without a second phone; the call and confirm controls only on Placed', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { AdminOrderDetailView } = await import('../../client/admin/src/OrderDetailPage.tsx')
+      const noop = () => {}
+      const sameDay = Date.parse('2026-10-02T06:00:00.000Z')
+      const base: AdminDetailJson = {
+        id: 4,
+        publicNumber: 1042,
+        status: 'Order Is Placed',
+        placedAt: '2026-10-01T03:45:00.000Z',
+        goodsTotal: 1680,
+        deliveryPrice: null,
+        payableTotal: null,
+        note: 'Ring the side gate',
+        deliveryAddress: '12 Temple Road, Nugegoda',
+        cancellation: null,
+        packLines: [
+          {
+            packName: 'Grade 5 pack',
+            label: 'List',
+            gradeName: 'Grade 5',
+            lineTotal: 1500,
+            books: [{ title: 'Atlas', unitPrice: 1500, quantity: 1 }],
+          },
+        ],
+        itemLines: [
+          { title: 'Pencil', unitPrice: 120, quantity: 1, lineTotal: 120 },
+          { title: 'Eraser', unitPrice: 60, quantity: 1, lineTotal: 60 },
+        ],
+        parentName: 'Nimali Perera',
+        whatsapp: '0771234567',
+        secondPhone: '0712345678',
+        callAttemptedAt: null,
+      }
+      const render = (order: AdminDetailJson, extra: { notice?: string; priceError?: string; busy?: boolean; price?: string } = {}) =>
+        renderToStaticMarkup(
+          React.createElement(AdminOrderDetailView, {
+            order: parseAdminOrderDetail({ order }) as never,
+            notice: extra.notice,
+            price: extra.price ?? '',
+            priceError: extra.priceError,
+            busy: extra.busy,
+            now: sameDay,
+            onPriceChange: noop,
+            onMarkCall: noop,
+            onConfirm: noop,
+          }),
+        )
+
+      const placed = render(base)
+      assert.match(placed, /#(?:<!-- -->)?1042</)
+      assert.match(placed, /class="status-pill/)
+      assert.match(placed, /Nimali Perera/)
+      assert.match(placed, /WhatsApp (?:<!-- -->)?0771234567/)
+      assert.match(placed, /Second phone (?:<!-- -->)?0712345678/)
+      assert.match(placed, /12 Temple Road, Nugegoda/)
+      assert.match(placed, /Note: (?:<!-- -->)?Ring the side gate/)
+      assert.match(placed, /Grade 5 pack/)
+      // The pack line names its grade with its label.
+      assert.match(placed, /class="admin-order-detail-line-meta text-meta">Grade 5(?:<!-- -->)? · (?:<!-- -->)?List</)
+      assert.match(placed, /Atlas ×(?:<!-- -->)?1/)
+      assert.match(placed, /Goods total<\/span><span class="text-amount-row">Rs\. 1,680</)
+      assert.doesNotMatch(placed, /Delivery charge<\/span><span/)
+      assert.doesNotMatch(placed, /Payable total/)
+      // Placed: the chip, the secondary mark, and the inline confirm form (no modal).
+      assert.match(placed, /<span>Not called yet<\/span>/)
+      assert.match(placed, /<button type="button" class="button-secondary press-travel">Mark call attempted<\/button>/)
+      assert.match(placed, /<form class="admin-order-detail-section admin-order-detail-confirm"/)
+      assert.match(placed, /<label class="text-label-caps" for="admin-order-delivery-price">Delivery charge<\/label>/)
+      assert.match(placed, /class="form-field-money"><span class="form-field-money-prefix" aria-hidden="true">Rs\.<\/span><input id="admin-order-delivery-price"[^>]*inputMode="numeric"/)
+      assert.match(placed, /<button type="submit" class="button-primary press-travel">Confirm order<\/button>/)
+      assert.doesNotMatch(placed, /modal|role="dialog"/)
+      assert.doesNotMatch(placed, /role="alert"/)
+      // Nothing on the page edits the snapshot: the only field is the delivery charge.
+      assert.equal((placed.match(/<input/g) ?? []).length, 1)
+      assert.doesNotMatch(placed, /<textarea|<select/)
+
+      const called = render({ ...base, callAttemptedAt: '2026-10-02T03:45:00.000Z' })
+      assert.match(called, /admin-order-call admin-order-call-attempted/)
+      assert.match(called, /<span>Called 9:15 am · no answer<\/span>/)
+      assert.doesNotMatch(called, /Not called yet/)
+
+      const noPhone = render({ ...base, secondPhone: null, note: null })
+      assert.doesNotMatch(noPhone, /Second phone/)
+      assert.doesNotMatch(noPhone, /Note:/)
+      assert.match(noPhone, /WhatsApp (?:<!-- -->)?0771234567/)
+
+      const busy = render(base, { busy: true })
+      assert.match(busy, /<button type="button" class="button-secondary press-travel" aria-disabled="true">Mark call attempted/)
+      assert.match(busy, /<button type="submit" class="button-primary press-travel" aria-disabled="true">Confirm order/)
+      assert.doesNotMatch(busy, /disabled=""/)
+
+      const invalid = render(base, { price: '', priceError: PRICE_MESSAGE })
+      assert.match(invalid, /class="form-field is-invalid"/)
+      assert.match(invalid, /aria-invalid="true"[^>]*aria-describedby="admin-order-delivery-price-error"|aria-describedby="admin-order-delivery-price-error"[^>]*aria-invalid="true"/)
+      assert.match(invalid, /<p id="admin-order-delivery-price-error" class="form-error text-meta" role="alert">Enter the delivery charge in whole rupees, Rs\. 0 or more\.<\/p>/)
+
+      const conflict = render(base, { notice: CANCELLED_FIRST })
+      assert.match(conflict, /role="alert"><p class="notice-body">The parent cancelled this order before your confirm arrived, so it can&#x27;t be confirmed\.<\/p>/)
+
+      // Confirmed: the totals show; the call controls and confirm form are gone.
+      const confirmedOrder = render({ ...base, status: 'Order Confirmed', deliveryPrice: 350, payableTotal: 2030 })
+      assert.match(confirmedOrder, /Delivery charge<\/span><span class="text-amount-row">Rs\. 350</)
+      assert.match(confirmedOrder, /Payable total<\/span><span class="text-amount-row">Rs\. 2,030</)
+      assert.doesNotMatch(confirmedOrder, /Mark call attempted|Confirm order|admin-order-call|<form|<input/)
+      for (const status of ['Processing', 'Delivered', 'Cancelled']) {
+        const other = render({ ...base, status })
+        assert.doesNotMatch(other, /Mark call attempted|Confirm order|admin-order-call|<form/, status)
+      }
+    })
+
+    it('render: each 4.4 row is a link to its detail', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { AdminOrdersBoard } = await import('../../client/admin/src/OrdersPage.tsx')
+      const html = renderToStaticMarkup(
+        React.createElement(
+          MemoryRouter,
+          null,
+          React.createElement(AdminOrdersBoard, {
+            orders: [
+              {
+                id: 12,
+                publicNumber: 1012,
+                status: 'Order Is Placed',
+                placedAt: '2026-10-01T03:45:00.000Z',
+                parentName: 'Nimali Perera',
+                whatsapp: '0771234567',
+                goodsTotal: 1680,
+                lineCount: 3,
+                linesSummary: 'Pack, Pencil, Eraser',
+                callAttemptedAt: null,
+              },
+            ],
+            filter: null,
+            onFilterChange: () => {},
+            onRefresh: () => {},
+          }),
+        ),
+      )
+      assert.match(html, /<li class="admin-order-row is-attention"><a class="admin-order-row-link" href="\/orders\/12"[^>]*>/)
+      // Under the app's `/admin` basename the same row points at /admin/orders/12.
+      const based = renderToStaticMarkup(
+        React.createElement(
+          MemoryRouter,
+          { basename: '/admin', initialEntries: ['/admin'] },
+          React.createElement('div', null, React.createElement(AdminOrdersBoard, {
+            orders: [
+              {
+                id: 12,
+                publicNumber: 1012,
+                status: 'Order Confirmed',
+                placedAt: '2026-10-01T03:45:00.000Z',
+                parentName: 'Nimali Perera',
+                whatsapp: '0771234567',
+                goodsTotal: 1680,
+                lineCount: 3,
+                linesSummary: 'Pack, Pencil, Eraser',
+                callAttemptedAt: null,
+              },
+            ],
+            filter: null,
+            onFilterChange: () => {},
+            onRefresh: () => {},
+          })),
+        ),
+      )
+      assert.match(based, /<li class="admin-order-row"><a class="admin-order-row-link" href="\/admin\/orders\/12"/)
+      assert.match(html, /<\/div><\/a><\/li>/)
+    })
+
+    it('wires the routes, the page, no modal, no status literals, and token-only styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const adminHttp = await read(ordersDir, 'admin-http.ts')
+      const adminSql = await read(ordersDir, 'admin.ts')
+      const detailSql = await read(ordersDir, 'detail.ts')
+      const adminSrc = path.join(repoRoot, 'client', 'admin', 'src')
+      const page = await read(adminSrc, 'OrderDetailPage.tsx')
+      const listPage = await read(adminSrc, 'OrdersPage.tsx')
+      const helper = await read(adminSrc, 'orders.ts')
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Server: three new routes, each no-store first then requireAdmin; no SQL in the router.
+      assert.doesNotMatch(adminHttp, /db\.prepare/)
+      for (const route of ["router.get(\n    '/admin/orders/:id'", "router.post(\n    '/admin/orders/:id/call-attempted'", "router.post(\n    '/admin/orders/:id/confirm'"]) {
+        const at = adminHttp.replace(/\r\n/g, '\n').indexOf(route)
+        assert.ok(at >= 0, `missing ${route}`)
+        const handler = adminHttp.replace(/\r\n/g, '\n').slice(at, at + 400)
+        assert.match(handler, /safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)\s*if \(!requireAdmin\(db, env, req, res, ADMIN_ORDERS_FORBIDDEN\)\) return/)
+      }
+      assert.match(adminHttp, /function parseId\(value: unknown\)/)
+      assert.match(adminHttp, /Number\.isSafeInteger\(value\) \|\| value < 0/)
+      assert.match(adminHttp, /typeof value !== 'number'/)
+      assert.match(adminHttp, /'deliveryPrice'\)/)
+      // The line mapper is shared, not copied.
+      assert.match(detailSql, /export function toDetail\(/)
+      assert.match(adminSql, /toDetail\(db, row\)/)
+      assert.doesNotMatch(adminSql, /FROM order_pack_lines\s+WHERE order_id = \?/)
+      assert.doesNotMatch(adminSql, /order_pack_line_books/)
+      // Both writes are one compare-and-set on Order Is Placed inside an immediate transaction.
+      assert.match(adminSql, /UPDATE orders SET call_attempted_at = \? WHERE id = \? AND status = \?/)
+      assert.match(
+        adminSql,
+        /SET status = \?, delivery_price_rupees = \?, payable_total_rupees = goods_total_rupees \+ \?\s*WHERE id = \? AND status = \?/,
+      )
+      assert.equal((adminSql.match(/\.immediate\(\)/g) ?? []).length, 2)
+      assert.doesNotMatch(adminSql, /(INTO|UPDATE)\s+(?!orders\b)[a-z_]+/)
+      assert.doesNotMatch(adminSql, /parent_delivery_note\s*=|delivery_address\s*=|parent_name\s*=|whatsapp\s*=|second_phone\s*=|goods_total_rupees\s*=/)
+
+      // Client: the route, the page, no modal, no storage, no status literals, busy as aria-disabled.
+      assert.match(adminApp, /import \{ OrderDetailRoute \} from '\.\/OrderDetailPage'/)
+      assert.match(adminApp, /<Route path="orders\/:id" element=\{<OrderDetailRoute \/>\} \/>/)
+      // The route remounts the page per id, so no order state carries across ids.
+      assert.match(page, /<OrderDetailPage key=\{params\.id \?\? ''\} \/>/)
+      // Actions abort on unmount; older answers never overwrite newer ones; a 409 holds busy for the refetch.
+      assert.match(page, /actionControllerRef\.current\?\.abort\(\)/)
+      assert.match(page, /versionRef\.current !== version/)
+      assert.match(page, /await load\(\)/)
+      assert.match(page, /response\.status === 404\) \{\s*showNotFound\(/)
+      for (const source of [page, listPage, helper]) {
+        assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/)
+        assert.doesNotMatch(
+          source,
+          /'(Order Is Placed|Order Confirmed|Processing|Packing The Order|Ready To Deliver|On Delivery Partner|Delivered|Cancelled)'/,
+        )
+      }
+      assert.doesNotMatch(page, /modal|role="dialog"|aria-modal/i)
+      assert.doesNotMatch(page, /method: 'PATCH'|method: 'DELETE'|textarea|<select/)
+      assert.match(page, /new AbortController\(\)/)
+      assert.match(page, /<Skeleton \/>/)
+      assert.match(page, /All orders/)
+      assert.match(page, /aria-disabled=\{busy \? 'true' : undefined\}/)
+      assert.match(page, /if \(actingRef\.current\) return/)
+      assert.match(page, /response\.status === 409/)
+      assert.match(page, /void load\(\)/)
+      assert.match(page, /response\.status === 401/)
+      assert.match(page, /DELIVERY_PRICE_MESSAGE/)
+      assert.match(page, /import \{ CallChip, placedAtCopy \} from '\.\/OrdersPage'/)
+      assert.match(listPage, /<Link className="admin-order-row-link" to=\{adminOrderRoute\(order\.id\)\}>/)
+
+      // Styles: admin-order-detail-* and the row link on tokens only; the row keeps 44px targets.
+      const rules = [...baseCss.matchAll(/(?:^|\n)[ \t]*([^{}\n]*\.admin-order-(?:detail|row-link)[^{}]*)\{([^}]*)\}/g)]
+      assert.ok(rules.length >= 15, `admin-order-detail rules are missing (${rules.length})`)
+      for (const [, selector, body] of rules) {
+        assert.doesNotMatch(body, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(?:white|black)(?![\w-])/, `${selector.trim()} uses a raw colour`)
+        for (const color of body.matchAll(/(?:color|background|border[\w-]*|outline):\s*([^;]+);/g)) {
+          assert.match(color[1], /var\(--|none|^0$|^0 /, `${selector.trim()} ${color[0]}`)
+        }
+      }
+      assert.match(cssRule(baseCss, '.admin-order-row-link'), /grid-template-columns: subgrid/)
+      assert.match(cssRule(baseCss, '.admin-order-row-link'), /min-height: var\(--space-touch-min\)/)
+      assert.match(cssRule(baseCss, '.admin-order-row'), /position: relative/)
+      assert.match(cssRule(baseCss, '.admin-order-row-link::after'), /inset: 0/)
+      assert.match(cssRule(baseCss, '.admin-order-detail-back'), /min-height: var\(--space-touch-min\)/)
+      assert.match(cssRule(baseCss, '.admin-order-detail-totals'), /border-top: var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
     })
   })
 })

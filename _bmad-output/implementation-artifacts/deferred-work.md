@@ -73,3 +73,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-4-admin-orders-one-list-open-and-past.md`
   summary: Client page load behaviour (the 401, 403, 500, malformed-body and network branches, and keeping the last good list on a failed refresh) is pinned only by source-text regexes, because the repo has no DOM test harness (jsdom or Testing Library) that can mount a page.
   evidence: The 4.4 review found that `OrdersPage.load` could regress, for example by blanking the list on a failed Refresh, with every io-matrix assertion still passing. The same gap applies to every earlier admin and storefront page.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-5-confirm-the-order-and-mark-the-call.md`
+  summary: The admin order detail does not render `order.cancellation` (who cancelled, when, and the reason), so a Cancelled order shows only its pill.
+  evidence: The admin detail JSON already carries `cancellation` from the 4.3 mapper, but 4.5's page scope lists only contacts, lines and totals. Story 4.6 adds the admin cancel with a reason and should show both parent and admin cancellations.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-5-confirm-the-order-and-mark-the-call.md`
+  summary: The inline confirm form does not preview the payable total (goods + typed delivery) before the irreversible Confirm, so a typo such as 3500 for 350 is frozen on the order.
+  evidence: Confirm is deliberately not a modal (DESIGN.md L699-701 keeps modals for terminal actions), and nothing on the form shows the resulting payable figure until after commit.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-5-confirm-the-order-and-mark-the-call.md`
+  summary: The `OrderDetailPage` action state machine (409 notice and refetch, 401 sign-out clearing contacts, single-submit guard, 400 field error, success swap) is pinned only by source-text regexes, not by running the page against stubbed fetch answers.
+  evidence: The 4.5 verification-gap review showed that dropping `void load()` from the 409 branch or `setOrder(parsed)` from the success branch leaves every io-matrix assertion green, because the repo has no DOM test harness (jsdom or Testing Library).
