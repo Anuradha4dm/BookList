@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import {
   DETAIL_COLUMNS,
   ORDER_CANCELLED,
+  ORDER_DELIVERED,
   ORDER_NOT_FOUND_MESSAGE,
   toDetail,
   type DetailSqlRow,
@@ -10,6 +11,38 @@ import {
 import { ORDER_PLACED } from './place.js'
 
 export const ORDER_CONFIRMED = 'Order Confirmed'
+export const ORDER_PROCESSING = 'Processing'
+export const ORDER_PACKING = 'Packing The Order'
+export const ORDER_READY = 'Ready To Deliver'
+export const ORDER_ON_DELIVERY = 'On Delivery Partner'
+
+/** Every stored status, in pipeline order with Cancelled last. */
+export const ORDER_STATUSES: readonly string[] = [
+  ORDER_PLACED,
+  ORDER_CONFIRMED,
+  ORDER_PROCESSING,
+  ORDER_PACKING,
+  ORDER_READY,
+  ORDER_ON_DELIVERY,
+  ORDER_DELIVERED,
+  ORDER_CANCELLED,
+]
+
+/** Where `/status` may move an order: never back to Placed, never to Cancelled (that is `/cancel`). */
+export const MOVE_TARGETS: readonly string[] = [
+  ORDER_CONFIRMED,
+  ORDER_PROCESSING,
+  ORDER_PACKING,
+  ORDER_READY,
+  ORDER_ON_DELIVERY,
+  ORDER_DELIVERED,
+]
+
+export const EXPECTED_STATUS_MESSAGE = 'Refresh the order and try again.'
+export const MOVE_TARGET_MESSAGE = 'Choose a status to move this order to.'
+export const REASON_MESSAGE = 'Write a short reason the parent will see, up to 500 characters.'
+export const REASON_MAX_LENGTH = 500
+export const CONFIRM_BEFORE_MOVE_MESSAGE = 'Confirm this order with a delivery charge before moving it on.'
 
 export const DELIVERY_PRICE_MESSAGE = 'Enter the delivery charge in whole rupees, Rs. 0 or more.'
 export const NOT_CALLABLE_MESSAGE = 'This order is no longer waiting for a call.'
@@ -238,4 +271,104 @@ export function confirmOrder(
     return { ok: true, order: toAdminDetail(db, row) }
   })
   return confirm.immediate()
+}
+
+export type TransitionResult =
+  | { ok: true; order: AdminOrderDetail }
+  | NotFound
+  | { ok: false; status: 409; code: 'order_transition_not_allowed' | 'order_status_stale'; message: string }
+
+function isFinal(status: string): boolean {
+  return status === ORDER_DELIVERED || status === ORDER_CANCELLED
+}
+
+function notAllowed(message: string): TransitionResult {
+  return { ok: false, status: 409, code: 'order_transition_not_allowed', message }
+}
+
+function staleResult(current: string): TransitionResult {
+  return {
+    ok: false,
+    status: 409,
+    code: 'order_status_stale',
+    message: `This order changed to ${current} since you opened it, so nothing was changed. Check it and try again.`,
+  }
+}
+
+/** The refusal for a move from `expected` to `to`, or undefined when the move is allowed. */
+function moveBreach(expected: string, to: string): string | undefined {
+  if (expected === ORDER_PLACED) return CONFIRM_BEFORE_MOVE_MESSAGE
+  if (isFinal(expected)) return `This order is already ${expected}, which is final.`
+  if (to === expected) return `This order is already ${expected}.`
+  return undefined
+}
+
+function cancelBreach(expected: string): string | undefined {
+  if (isFinal(expected)) return `This order is already ${expected}, which is final.`
+  return undefined
+}
+
+/**
+ * One compare-and-set transition on `expected`, for the caller to run as an immediate
+ * transaction. The rules are checked on `expected`; a breach is only reported as not allowed when
+ * the row really is at `expected`, otherwise the request was stale. A write that changes nothing
+ * is re-read to say why.
+ */
+function transition(
+  db: Database.Database,
+  orderId: number,
+  expected: string,
+  breach: string | undefined,
+  write: () => number,
+): Database.Transaction<() => TransitionResult> {
+  return db.transaction((): TransitionResult => {
+    if (breach !== undefined) {
+      const row = findAdminOrder(db, orderId)
+      if (!row) return NOT_FOUND
+      if (row.status !== expected) return staleResult(row.status)
+      return notAllowed(breach)
+    }
+    const changed = write()
+    const row = findAdminOrder(db, orderId)
+    if (!row) return NOT_FOUND
+    if (changed === 0) return staleResult(row.status)
+    return { ok: true, order: toAdminDetail(db, row) }
+  })
+}
+
+/**
+ * Moves a confirmed order along the pipeline: forward with skips, backward down to Order
+ * Confirmed, or on to Delivered. Delivery and payable totals are left as they are.
+ */
+export function moveOrderStatus(
+  db: Database.Database,
+  orderId: number,
+  expected: string,
+  to: string,
+): TransitionResult {
+  return transition(db, orderId, expected, moveBreach(expected, to), () =>
+    db.prepare(`UPDATE orders SET status = ? WHERE id = ? AND status = ?`).run(to, orderId, expected).changes,
+  ).immediate()
+}
+
+/**
+ * The shop cancels any non-terminal order with a reason the parent sees. The payable total is
+ * cleared (migration 010's trigger requires it); the delivery price is kept.
+ */
+export function cancelAdminOrder(
+  db: Database.Database,
+  orderId: number,
+  expected: string,
+  reason: string,
+): TransitionResult {
+  return transition(db, orderId, expected, cancelBreach(expected), () =>
+    db
+      .prepare(
+        `UPDATE orders
+         SET status = 'Cancelled', cancelled_by = 'admin', cancellation_reason = ?, cancelled_at = ?,
+             payable_total_rupees = NULL
+         WHERE id = ? AND status = ?`,
+      )
+      .run(reason, new Date().toISOString(), orderId, expected).changes,
+  ).immediate()
 }

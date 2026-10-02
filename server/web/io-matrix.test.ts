@@ -30,18 +30,30 @@ import {
   itemsItemPath,
 } from '../../client/admin/src/items.ts'
 import {
+  CONFIRMED_STATUS,
+  DELIVERED_STATUS,
   DELIVERY_PRICE_MESSAGE,
+  MOVABLE_FROM,
+  REASON_MAX_LENGTH,
+  REASON_MESSAGE,
   adminOrderCallAttemptedPath,
+  adminOrderCancelPath,
   adminOrderConfirmPath,
   adminOrderPath,
   adminOrderRoute,
   adminOrderSections,
+  adminOrderStatusPath,
   adminOrdersPath,
+  cancelBody,
   confirmBody,
   deliveryPriceFrom,
+  isTerminal,
+  moveBody,
   parseAdminOrderDetail,
   parseAdminOrders,
+  reasonFrom,
   statusFilterFrom,
+  transitionAnnouncement,
   withStatusFilter,
 } from '../../client/admin/src/orders.ts'
 import {
@@ -81,6 +93,7 @@ import { toStorefrontPack } from '../catalog/packs.ts'
 import { checkoutBlock } from '../cart/index.ts'
 import { runMigrations } from '../db/migrations/run.ts'
 import { listParentOrders, placeOrder } from '../orders/place.ts'
+import { MOVE_TARGETS, REASON_MAX_LENGTH as SERVER_REASON_MAX_LENGTH } from '../orders/admin.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -203,6 +216,8 @@ const ADMIN_ORDERS_PORT = String(18785)
 const adminOrdersBaseUrl = `http://127.0.0.1:${ADMIN_ORDERS_PORT}`
 const ADMIN_DETAIL_PORT = String(18786)
 const adminDetailBaseUrl = `http://127.0.0.1:${ADMIN_DETAIL_PORT}`
+const ADMIN_CLOSE_PORT = String(18787)
+const adminCloseBaseUrl = `http://127.0.0.1:${ADMIN_CLOSE_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -11327,6 +11342,7 @@ describe('I/O & edge-case matrix', () => {
       const page = await read(adminSrc, 'OrderDetailPage.tsx')
       const listPage = await read(adminSrc, 'OrdersPage.tsx')
       const helper = await read(adminSrc, 'orders.ts')
+      const terminalModal = await read(adminSrc, 'TerminalModal.tsx')
       const adminApp = await readFile(adminAppPath, 'utf8')
       const baseCss = await readFile(baseCssPath, 'utf8')
 
@@ -11353,7 +11369,8 @@ describe('I/O & edge-case matrix', () => {
         adminSql,
         /SET status = \?, delivery_price_rupees = \?, payable_total_rupees = goods_total_rupees \+ \?\s*WHERE id = \? AND status = \?/,
       )
-      assert.equal((adminSql.match(/\.immediate\(\)/g) ?? []).length, 2)
+      // Narrowed by 4.6: the move and the admin cancel add one immediate transaction each.
+      assert.equal((adminSql.match(/\.immediate\(\)/g) ?? []).length, 4)
       assert.doesNotMatch(adminSql, /(INTO|UPDATE)\s+(?!orders\b)[a-z_]+/)
       assert.doesNotMatch(adminSql, /parent_delivery_note\s*=|delivery_address\s*=|parent_name\s*=|whatsapp\s*=|second_phone\s*=|goods_total_rupees\s*=/)
 
@@ -11367,15 +11384,21 @@ describe('I/O & edge-case matrix', () => {
       assert.match(page, /versionRef\.current !== version/)
       assert.match(page, /await load\(\)/)
       assert.match(page, /response\.status === 404\) \{\s*showNotFound\(/)
-      for (const source of [page, listPage, helper]) {
+      for (const source of [page, listPage, helper, terminalModal]) {
         assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/)
         assert.doesNotMatch(
           source,
           /'(Order Is Placed|Order Confirmed|Processing|Packing The Order|Ready To Deliver|On Delivery Partner|Delivered|Cancelled)'/,
         )
       }
-      assert.doesNotMatch(page, /modal|role="dialog"|aria-modal/i)
+      // Narrowed by 4.6: the only dialog lives in TerminalModal.tsx, and the confirm form is not in it.
+      assert.doesNotMatch(page, /role="dialog"|aria-modal/i)
+      assert.match(terminalModal, /role="dialog"/)
+      const confirmForm = page.slice(page.indexOf('<form'), page.indexOf('</form>'))
+      assert.ok(confirmForm.length > 0)
+      assert.doesNotMatch(confirmForm, /TerminalModal|modal/i)
       assert.doesNotMatch(page, /method: 'PATCH'|method: 'DELETE'|textarea|<select/)
+      assert.doesNotMatch(terminalModal, /method: 'PATCH'|method: 'DELETE'|<select/)
       assert.match(page, /new AbortController\(\)/)
       assert.match(page, /<Skeleton \/>/)
       assert.match(page, /All orders/)
@@ -11403,6 +11426,834 @@ describe('I/O & edge-case matrix', () => {
       assert.match(cssRule(baseCss, '.admin-order-row-link::after'), /inset: 0/)
       assert.match(cssRule(baseCss, '.admin-order-detail-back'), /min-height: var\(--space-touch-min\)/)
       assert.match(cssRule(baseCss, '.admin-order-detail-totals'), /border-top: var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+    })
+  })
+
+  describe('Admin order detail — advance, skip forward, and close the order', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parent: Parent
+    let parentSerial = 0
+
+    type AdminDetailJson = {
+      id: number
+      publicNumber: number
+      status: string
+      placedAt: string
+      goodsTotal: number
+      deliveryPrice: number | null
+      payableTotal: number | null
+      note: string | null
+      deliveryAddress: string
+      cancellation: { by: string; reason: string | null; at: string | null } | null
+      packLines: Array<{
+        packName: string
+        label: string
+        gradeName: string
+        lineTotal: number
+        books: Array<{ title: string; unitPrice: number; quantity: number }>
+      }>
+      itemLines: Array<{ title: string; unitPrice: number; quantity: number; lineTotal: number }>
+      parentName: string
+      whatsapp: string
+      secondPhone: string | null
+      callAttemptedAt: string | null
+    }
+    type ErrorBody = { error: { code: string; message: string; field?: string } }
+    type Parent = { cookie: string; id: number }
+
+    const FORBIDDEN = 'Only the shop owner can see all orders. Sign in as the shop owner to continue.'
+    const EXPECTED_MESSAGE = 'Refresh the order and try again.'
+    const TARGET_MESSAGE = 'Choose a status to move this order to.'
+    const REASON = 'Write a short reason the parent will see, up to 500 characters.'
+    const PLACED_MOVE = 'Confirm this order with a delivery charge before moving it on.'
+    const finalMessage = (status: string) => `This order is already ${status}, which is final.`
+    const staleMessage = (status: string) =>
+      `This order changed to ${status} since you opened it, so nothing was changed. Check it and try again.`
+    const STATUSES = [
+      'Order Is Placed',
+      'Order Confirmed',
+      'Processing',
+      'Packing The Order',
+      'Ready To Deliver',
+      'On Delivery Partner',
+      'Delivered',
+      'Cancelled',
+    ]
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${adminCloseBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(pathName: string, body: unknown): Promise<{ id: number }> {
+      const response = await fetch(`${adminCloseBaseUrl}${pathName}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: JSON.stringify(body),
+      })
+      assert.equal(response.status, 201, `POST ${pathName}: ${response.status}`)
+      return (await response.json()) as { id: number }
+    }
+
+    async function registerParent(tag: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `admin-close.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const response = await fetch(`${adminCloseBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: `Admin close ${tag}`,
+          deliveryAddress: `${parentSerial} Lake Road, Maharagama`,
+          whatsapp: `0772222${String(100 + parentSerial).slice(-3)}`,
+          secondPhone: '',
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const stored = readDb(
+        (db) => db.prepare('SELECT id FROM parents WHERE email = ?').get(email) as { id: number },
+      )
+      return { cookie: cookieHeader(cookie), id: stored.id }
+    }
+
+    /** One pack (Rs. 1,500) plus one item (Rs. 180), then Place: goods 1680, status Placed. */
+    async function placeOne(tag: string): Promise<{ id: number; publicNumber: number }> {
+      const s = `${Date.now()}-${tag}-${Math.random().toString(36).slice(2, 8)}`
+      const schoolId = (await adminSend('/api/admin/schools', catalogNameBody(`Close school ${s}`))).id
+      const gradeId = (await adminSend('/api/admin/grades', catalogNameBody(`Grade ${s}`))).id
+      const book = await adminSend('/api/admin/books', bookBody(`Atlas ${s}`, 1500))
+      const pack = await adminSend('/api/admin/packs', packCreateBody(`Close pack ${s}`, schoolId, gradeId, 'Close', [book.id]))
+      const item = await adminSend('/api/admin/items', itemBody(`Pencil ${s}`, 'Stationery', 180))
+      const packResponse = await fetch(`${adminCloseBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${book.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      const itemResponse = await fetch(`${adminCloseBaseUrl}/api/cart/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ itemId: item.id, quantity: 1 }),
+      })
+      assert.ok(itemResponse.status === 201 || itemResponse.status === 200, `add item ${itemResponse.status}`)
+      const response = await fetch(`${adminCloseBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie, 'Idempotency-Key': `admin-close-${s}` },
+        body: JSON.stringify({}),
+      })
+      assert.equal(response.status, 201)
+      return ((await response.json()) as { order: { id: number; publicNumber: number } }).order
+    }
+
+    function post(cookie: string | undefined, pathName: string, body: unknown): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      return fetch(`${adminCloseBaseUrl}${pathName}`, {
+        method: 'POST',
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+    }
+
+    function moveTo(id: number | string, body: unknown): Promise<Response> {
+      return post(adminCookie, `/api/admin/orders/${id}/status`, body)
+    }
+
+    function cancelAs(id: number | string, body: unknown): Promise<Response> {
+      return post(adminCookie, `/api/admin/orders/${id}/cancel`, body)
+    }
+
+    function parentDetail(id: number): Promise<Response> {
+      return fetch(`${adminCloseBaseUrl}/api/orders/${id}`, { headers: { cookie: parent.cookie } })
+    }
+
+    async function okOrder(response: Response): Promise<AdminDetailJson> {
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as { order: AdminDetailJson }
+      assert.deepEqual(Object.keys(body), ['order'])
+      return body.order
+    }
+
+    async function expectRefused(
+      response: Response,
+      status: number,
+      code: string,
+      message?: string,
+      field?: string,
+    ): Promise<void> {
+      assert.equal(response.status, status)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, code)
+      if (message !== undefined) assert.equal(body.error.message, message)
+      if (field !== undefined) assert.equal(body.error.field, field)
+      else assert.equal(body.error.field, undefined)
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    function orderRow(id: number): Record<string, unknown> {
+      return readDb((db) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown>)
+    }
+
+    /** A placed order confirmed at Rs. 350 (payable 2030), then moved on to `status`. */
+    async function orderAt(status: string, tag: string): Promise<{ id: number; publicNumber: number }> {
+      const order = await placeOne(tag)
+      if (status === 'Order Is Placed') return order
+      const confirmed = await post(adminCookie, `/api/admin/orders/${order.id}/confirm`, { deliveryPrice: 350 })
+      assert.equal(confirmed.status, 200)
+      if (status === 'Order Confirmed') return order
+      if (status === 'Cancelled') {
+        await okOrder(await cancelAs(order.id, { expectedStatus: 'Order Confirmed', reason: 'Setup' }))
+        return order
+      }
+      await okOrder(await moveTo(order.id, { expectedStatus: 'Order Confirmed', status }))
+      return order
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-admin-close-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ADMIN_CLOSE_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+      parent = await registerParent('main')
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('auth / id: 401 without a cookie, 403 for a parent, 404 for a bad or unknown id', async () => {
+      const order = await orderAt('Order Confirmed', 'auth')
+      const before = orderRow(order.id)
+      const moveBodyOk = { expectedStatus: 'Order Confirmed', status: 'Processing' }
+      const cancelBodyOk = { expectedStatus: 'Order Confirmed', reason: 'Out of stock' }
+      for (const send of [
+        // post() directly: a default parameter would swap an absent cookie for the admin's.
+        (cookie?: string) => post(cookie, `/api/admin/orders/${order.id}/status`, moveBodyOk),
+        (cookie?: string) => post(cookie, `/api/admin/orders/${order.id}/cancel`, cancelBodyOk),
+      ]) {
+        await expectRefused(await send(undefined), 401, 'unauthenticated')
+        await expectRefused(await send(parent.cookie), 403, 'forbidden', FORBIDDEN)
+      }
+      for (const id of ['abc', '0', '-1', '1.5', '01', '999999', '99999999999999999999']) {
+        await expectRefused(await moveTo(id, moveBodyOk), 404, 'not_found', 'Order not found.')
+        await expectRefused(await cancelAs(id, cancelBodyOk), 404, 'not_found', 'Order not found.')
+      }
+      // An unknown id is a 404 even when the expected status would break a rule.
+      await expectRefused(await moveTo(999999, { expectedStatus: 'Delivered', status: 'Processing' }), 404, 'not_found')
+      await expectRefused(await cancelAs(999999, { expectedStatus: 'Cancelled', reason: 'x' }), 404, 'not_found')
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('advance: Confirmed → Processing keeps the delivery charge and payable total', async () => {
+      const order = await orderAt('Order Confirmed', 'advance')
+      const moved = await okOrder(await moveTo(order.id, { expectedStatus: 'Order Confirmed', status: 'Processing' }))
+      assert.equal(moved.status, 'Processing')
+      assert.equal(moved.deliveryPrice, 350)
+      assert.equal(moved.payableTotal, 2030)
+      assert.equal(moved.cancellation, null)
+      const row = orderRow(order.id)
+      assert.equal(row.status, 'Processing')
+      assert.equal(row.delivery_price_rupees, 350)
+      assert.equal(row.payable_total_rupees, 2030)
+      // The parent sees the move on the next poll.
+      const seen = (await (await parentDetail(order.id)).json()) as { order: AdminDetailJson }
+      assert.equal(seen.order.status, 'Processing')
+      assert.equal(seen.order.payableTotal, 2030)
+    })
+
+    it('skip forward (T3), back (T4) and deliver', async () => {
+      const order = await orderAt('Processing', 'skip')
+      assert.equal(
+        (await okOrder(await moveTo(order.id, { expectedStatus: 'Processing', status: 'Ready To Deliver' }))).status,
+        'Ready To Deliver',
+      )
+      assert.equal(
+        (await okOrder(await moveTo(order.id, { expectedStatus: 'Ready To Deliver', status: 'Order Confirmed' }))).status,
+        'Order Confirmed',
+      )
+      assert.equal(
+        (await okOrder(await moveTo(order.id, { expectedStatus: 'Order Confirmed', status: 'On Delivery Partner' }))).status,
+        'On Delivery Partner',
+      )
+      const delivered = await okOrder(await moveTo(order.id, { expectedStatus: 'On Delivery Partner', status: 'Delivered' }))
+      assert.equal(delivered.status, 'Delivered')
+      assert.equal(delivered.payableTotal, 2030)
+      assert.equal(delivered.deliveryPrice, 350)
+      assert.equal(orderRow(order.id).payable_total_rupees, 2030)
+    })
+
+    it('skip to Delivered: Confirmed → Delivered is allowed', async () => {
+      const order = await orderAt('Order Confirmed', 'hand')
+      const delivered = await okOrder(await moveTo(order.id, { expectedStatus: 'Order Confirmed', status: 'Delivered' }))
+      assert.equal(delivered.status, 'Delivered')
+      assert.equal(delivered.payableTotal, 2030)
+    })
+
+    it('placed move (T2): a placed order cannot be moved by /status, and the row is unchanged', async () => {
+      const order = await orderAt('Order Is Placed', 'placed-move')
+      const before = orderRow(order.id)
+      for (const status of ['Order Confirmed', 'Processing', 'Delivered']) {
+        await expectRefused(
+          await moveTo(order.id, { expectedStatus: 'Order Is Placed', status }),
+          409,
+          'order_transition_not_allowed',
+          PLACED_MOVE,
+        )
+      }
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('target Placed (T4) or any other non-target: a 400 on status, and the row is unchanged', async () => {
+      const order = await orderAt('Processing', 'target')
+      const before = orderRow(order.id)
+      for (const status of ['Order Is Placed', 'Cancelled', 'Shipped', 'processing', '', 3, null, true, ['Processing'], { s: 1 }, undefined]) {
+        await expectRefused(
+          await moveTo(order.id, { expectedStatus: 'Processing', status }),
+          400,
+          'invalid_input',
+          TARGET_MESSAGE,
+          'status',
+        )
+      }
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('final (T5): Delivered and Cancelled refuse every move and cancel', async () => {
+      for (const status of ['Delivered', 'Cancelled']) {
+        const order = await orderAt(status, `final-${status}`)
+        const before = orderRow(order.id)
+        for (const target of ['Order Confirmed', 'Processing', 'Delivered']) {
+          await expectRefused(
+            await moveTo(order.id, { expectedStatus: status, status: target }),
+            409,
+            'order_transition_not_allowed',
+            finalMessage(status),
+          )
+        }
+        await expectRefused(
+          await cancelAs(order.id, { expectedStatus: status, reason: 'Too late' }),
+          409,
+          'order_transition_not_allowed',
+          finalMessage(status),
+        )
+        assert.deepEqual(orderRow(order.id), before)
+      }
+    })
+
+    it('same status: Processing → Processing is refused', async () => {
+      const order = await orderAt('Processing', 'same')
+      const before = orderRow(order.id)
+      await expectRefused(
+        await moveTo(order.id, { expectedStatus: 'Processing', status: 'Processing' }),
+        409,
+        'order_transition_not_allowed',
+        'This order is already Processing.',
+      )
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('stale (T7): an expected status that is not the real one changes nothing and names the real one', async () => {
+      const order = await orderAt('Packing The Order', 'stale')
+      const before = orderRow(order.id)
+      await expectRefused(
+        await moveTo(order.id, { expectedStatus: 'Processing', status: 'Ready To Deliver' }),
+        409,
+        'order_status_stale',
+        staleMessage('Packing The Order'),
+      )
+      await expectRefused(
+        await cancelAs(order.id, { expectedStatus: 'Processing', reason: 'Out of stock' }),
+        409,
+        'order_status_stale',
+        staleMessage('Packing The Order'),
+      )
+      // A stale request that would also break a rule is still reported as stale.
+      await expectRefused(
+        await moveTo(order.id, { expectedStatus: 'Delivered', status: 'Processing' }),
+        409,
+        'order_status_stale',
+        staleMessage('Packing The Order'),
+      )
+      await expectRefused(
+        await moveTo(order.id, { expectedStatus: 'Order Is Placed', status: 'Processing' }),
+        409,
+        'order_status_stale',
+      )
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('admin cancel (T6): trimmed reason stored, payable cleared, delivery kept, and the parent sees it', async () => {
+      const order = await orderAt('Processing', 'cancel')
+      const startedAt = Date.now()
+      const cancelled = await okOrder(
+        await cancelAs(order.id, { expectedStatus: 'Processing', reason: '  Out of stock  ' }),
+      )
+      assert.equal(cancelled.status, 'Cancelled')
+      assert.equal(cancelled.payableTotal, null)
+      assert.equal(cancelled.deliveryPrice, 350)
+      assert.ok(cancelled.cancellation)
+      assert.equal(cancelled.cancellation.by, 'admin')
+      assert.equal(cancelled.cancellation.reason, 'Out of stock')
+      assert.ok(cancelled.cancellation.at)
+      assert.ok(Date.parse(cancelled.cancellation.at) >= startedAt - 1000)
+      const row = orderRow(order.id)
+      assert.equal(row.status, 'Cancelled')
+      assert.equal(row.cancelled_by, 'admin')
+      assert.equal(row.cancellation_reason, 'Out of stock')
+      assert.equal(row.payable_total_rupees, null)
+      assert.equal(row.delivery_price_rupees, 350)
+      assert.equal(row.goods_total_rupees, 1680)
+      // The parent's detail shows the same reason.
+      const seen = await parentDetail(order.id)
+      assert.equal(seen.status, 200)
+      const parentOrder = ((await seen.json()) as { order: AdminDetailJson }).order
+      assert.equal(parentOrder.status, 'Cancelled')
+      assert.equal(parentOrder.payableTotal, null)
+      assert.deepEqual(parentOrder.cancellation, { by: 'admin', reason: 'Out of stock', at: cancelled.cancellation.at })
+    })
+
+    it('cancel Placed: an admin cancel works on a placed order', async () => {
+      const order = await orderAt('Order Is Placed', 'cancel-placed')
+      const cancelled = await okOrder(await cancelAs(order.id, { expectedStatus: 'Order Is Placed', reason: 'No answer' }))
+      assert.equal(cancelled.status, 'Cancelled')
+      assert.equal(cancelled.cancellation?.by, 'admin')
+      assert.equal(cancelled.deliveryPrice, null)
+      assert.equal(orderRow(order.id).cancelled_by, 'admin')
+    })
+
+    it('cancel from every non-terminal status, with a 500-character reason accepted', async () => {
+      for (const status of STATUSES.slice(0, 6)) {
+        const order = await orderAt(status, `every-${status}`)
+        const deliveryBefore = orderRow(order.id).delivery_price_rupees
+        assert.equal(deliveryBefore, status === 'Order Is Placed' ? null : 350, status)
+        const reason = status === 'Processing' ? 'r'.repeat(500) : `Closed from ${status}`
+        const startedAt = Date.now()
+        const cancelled = await okOrder(await cancelAs(order.id, { expectedStatus: status, reason }))
+        assert.equal(cancelled.status, 'Cancelled', status)
+        assert.equal(cancelled.cancellation?.reason, reason)
+        const row = orderRow(order.id)
+        assert.equal(row.status, 'Cancelled', status)
+        assert.equal(row.cancelled_by, 'admin', status)
+        assert.equal(row.cancellation_reason, reason, status)
+        assert.equal(row.payable_total_rupees, null, status)
+        assert.equal(typeof row.cancelled_at, 'string', status)
+        assert.match(row.cancelled_at as string, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, status)
+        assert.ok(Date.parse(row.cancelled_at as string) >= startedAt - 1000, status)
+        assert.equal(row.delivery_price_rupees, deliveryBefore, status)
+      }
+    })
+
+    it('bad reason: missing, blank, 501 characters or not a string is a 400 on reason', async () => {
+      const order = await orderAt('Processing', 'bad-reason')
+      const before = orderRow(order.id)
+      for (const body of [
+        { expectedStatus: 'Processing' },
+        { expectedStatus: 'Processing', reason: '' },
+        { expectedStatus: 'Processing', reason: '   ' },
+        { expectedStatus: 'Processing', reason: 'r'.repeat(501) },
+        { expectedStatus: 'Processing', reason: 42 },
+        { expectedStatus: 'Processing', reason: null },
+        { expectedStatus: 'Processing', reason: ['Out of stock'] },
+      ]) {
+        await expectRefused(await cancelAs(order.id, body), 400, 'invalid_input', REASON, 'reason')
+      }
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('bad expected: missing or unknown expectedStatus is a 400 on expectedStatus, for both routes', async () => {
+      const order = await orderAt('Processing', 'bad-expected')
+      const before = orderRow(order.id)
+      for (const expectedStatus of [undefined, 'Shipped', 'processing', '', 7, null]) {
+        await expectRefused(
+          await moveTo(order.id, { expectedStatus, status: 'Ready To Deliver' }),
+          400,
+          'invalid_input',
+          EXPECTED_MESSAGE,
+          'expectedStatus',
+        )
+        await expectRefused(
+          await cancelAs(order.id, { expectedStatus, reason: 'Out of stock' }),
+          400,
+          'invalid_input',
+          EXPECTED_MESSAGE,
+          'expectedStatus',
+        )
+      }
+      await expectRefused(await moveTo(order.id, undefined), 400, 'invalid_input', EXPECTED_MESSAGE, 'expectedStatus')
+      assert.deepEqual(orderRow(order.id), before)
+    })
+
+    it('race: a parent cancel and an admin cancel on a placed order — exactly one wins', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const order = await orderAt('Order Is Placed', `race-${round}`)
+        const [parentAnswer, adminAnswer] = await Promise.all([
+          fetch(`${adminCloseBaseUrl}/api/orders/${order.id}/cancel`, { method: 'POST', headers: { cookie: parent.cookie } }),
+          cancelAs(order.id, { expectedStatus: 'Order Is Placed', reason: 'Shop closed' }),
+        ])
+        const statuses = [parentAnswer.status, adminAnswer.status].sort()
+        assert.deepEqual(statuses, [200, 409], `round ${round}`)
+        const row = orderRow(order.id)
+        assert.equal(row.status, 'Cancelled')
+        assert.equal(row.payable_total_rupees, null)
+        if (adminAnswer.status === 200) {
+          assert.equal(row.cancelled_by, 'admin')
+          assert.equal(((await parentAnswer.json()) as ErrorBody).error.code, 'order_not_cancellable')
+        } else {
+          assert.equal(row.cancelled_by, 'parent')
+          assert.equal(row.cancellation_reason, null)
+          const body = (await adminAnswer.json()) as ErrorBody
+          assert.equal(body.error.code, 'order_status_stale')
+          assert.equal(body.error.message, staleMessage('Cancelled'))
+        }
+      }
+    })
+
+    it('race: two admin moves, and an admin move against an admin cancel, on one expected status', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const order = await orderAt('Processing', `admin-race-${round}`)
+        const answers = await Promise.all([
+          moveTo(order.id, { expectedStatus: 'Processing', status: 'Packing The Order' }),
+          moveTo(order.id, { expectedStatus: 'Processing', status: 'Ready To Deliver' }),
+        ])
+        assert.deepEqual(answers.map((answer) => answer.status).sort(), [200, 409], `moves round ${round}`)
+        const winner = answers.find((answer) => answer.status === 200)
+        const loser = answers.find((answer) => answer.status === 409)
+        assert.ok(winner && loser)
+        const won = (await winner.json()) as { order: AdminDetailJson }
+        assert.equal(orderRow(order.id).status, won.order.status)
+        const lost = (await loser.json()) as ErrorBody
+        assert.equal(lost.error.code, 'order_status_stale')
+        assert.equal(lost.error.message, staleMessage(won.order.status))
+      }
+      for (let round = 0; round < 4; round += 1) {
+        const order = await orderAt('Processing', `admin-race-cancel-${round}`)
+        const [moved, cancelled] = await Promise.all([
+          moveTo(order.id, { expectedStatus: 'Processing', status: 'Ready To Deliver' }),
+          cancelAs(order.id, { expectedStatus: 'Processing', reason: 'Shop closed' }),
+        ])
+        assert.deepEqual([moved.status, cancelled.status].sort(), [200, 409], `move vs cancel round ${round}`)
+        const row = orderRow(order.id)
+        if (cancelled.status === 200) {
+          assert.equal(row.status, 'Cancelled')
+          assert.equal(row.payable_total_rupees, null)
+          assert.equal(row.cancelled_by, 'admin')
+          assert.equal(((await moved.json()) as ErrorBody).error.code, 'order_status_stale')
+        } else {
+          assert.equal(row.status, 'Ready To Deliver')
+          assert.equal(row.payable_total_rupees, 2030)
+          assert.equal(row.cancellation_reason, null)
+          assert.equal(((await cancelled.json()) as ErrorBody).error.code, 'order_status_stale')
+        }
+      }
+    })
+
+    it('parity: the client targets and reason limit match the server', () => {
+      assert.deepEqual([...MOVE_TARGETS], [...MOVABLE_FROM, DELIVERED_STATUS])
+      assert.equal(SERVER_REASON_MAX_LENGTH, REASON_MAX_LENGTH)
+      assert.equal(REASON_MAX_LENGTH, 500)
+    })
+
+    it('client helpers: derived statuses, paths and bodies', () => {
+      assert.equal(transitionAnnouncement('Ready To Deliver'), 'Moved to Ready To Deliver.')
+      assert.equal(transitionAnnouncement('Order Confirmed'), 'Moved to Order Confirmed.')
+      assert.equal(transitionAnnouncement('Delivered'), 'Marked delivered.')
+      assert.equal(transitionAnnouncement('Cancelled'), 'Order cancelled.')
+      assert.equal(CONFIRMED_STATUS, 'Order Confirmed')
+      assert.equal(DELIVERED_STATUS, 'Delivered')
+      assert.deepEqual([...MOVABLE_FROM], ['Order Confirmed', 'Processing', 'Packing The Order', 'Ready To Deliver', 'On Delivery Partner'])
+      assert.equal(isTerminal('Delivered'), true)
+      assert.equal(isTerminal('Cancelled'), true)
+      assert.equal(isTerminal('Order Is Placed'), false)
+      assert.equal(isTerminal('On Delivery Partner'), false)
+      assert.equal(adminOrderStatusPath(12), '/api/admin/orders/12/status')
+      assert.equal(adminOrderCancelPath(12), '/api/admin/orders/12/cancel')
+      assert.deepEqual(moveBody('Processing', 'Ready To Deliver'), { expectedStatus: 'Processing', status: 'Ready To Deliver' })
+      assert.deepEqual(cancelBody('Processing', 'Out of stock'), { expectedStatus: 'Processing', reason: 'Out of stock' })
+      assert.equal(REASON_MESSAGE, REASON)
+      assert.equal(reasonFrom('  Out of stock  '), 'Out of stock')
+      assert.equal(reasonFrom('   '), undefined)
+      assert.equal(reasonFrom(''), undefined)
+      assert.equal(reasonFrom('r'.repeat(500)), 'r'.repeat(500))
+      assert.equal(reasonFrom('r'.repeat(501)), undefined)
+    })
+
+    it('render: Move to excludes the current status; Placed has only Cancel; final orders have no controls', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { AdminOrderDetailView } = await import('../../client/admin/src/OrderDetailPage.tsx')
+      const noop = () => {}
+      const base: AdminDetailJson = {
+        id: 4,
+        publicNumber: 1042,
+        status: 'Order Confirmed',
+        placedAt: '2026-10-01T03:45:00.000Z',
+        goodsTotal: 1680,
+        deliveryPrice: 350,
+        payableTotal: 2030,
+        note: null,
+        deliveryAddress: '12 Temple Road, Nugegoda',
+        cancellation: null,
+        packLines: [],
+        itemLines: [{ title: 'Pencil', unitPrice: 120, quantity: 1, lineTotal: 120 }],
+        parentName: 'Nimali Perera',
+        whatsapp: '0771234567',
+        secondPhone: null,
+        callAttemptedAt: null,
+      }
+      type Extra = {
+        busy?: boolean
+        modal?: 'delivered' | 'cancel' | null
+        reason?: string
+        reasonError?: string
+        modalError?: string
+        notice?: string
+        announcement?: string
+      }
+      const render = (order: AdminDetailJson, extra: Extra = {}) =>
+        renderToStaticMarkup(
+          React.createElement(AdminOrderDetailView, {
+            order: parseAdminOrderDetail({ order }) as never,
+            notice: extra.notice,
+            price: '',
+            busy: extra.busy,
+            onPriceChange: noop,
+            onMarkCall: noop,
+            onConfirm: noop,
+            modal: extra.modal,
+            reason: extra.reason,
+            reasonError: extra.reasonError,
+            modalError: extra.modalError,
+            announcement: extra.announcement,
+          }),
+        )
+      const moveButtons = (html: string) =>
+        [...html.matchAll(/<button type="button" class="button-secondary press-travel"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1])
+
+      const confirmed = render(base)
+      assert.match(confirmed, /<section class="admin-order-detail-section admin-order-detail-status" aria-label="Status">/)
+      assert.match(confirmed, /id="admin-order-move-label">Move to<\/span><div class="admin-order-detail-status-group" role="group" aria-labelledby="admin-order-move-label">/)
+      assert.deepEqual(moveButtons(confirmed), ['Processing', 'Packing The Order', 'Ready To Deliver', 'On Delivery Partner'])
+      assert.match(confirmed, /<button type="button" class="button-primary press-travel">Mark delivered<\/button>/)
+      assert.match(confirmed, /<button type="button" class="button-secondary press-travel admin-order-detail-cancel">Cancel order<\/button>/)
+      // Closed modals render nothing; no select, no form for the moves.
+      assert.doesNotMatch(confirmed, /role="dialog"|modal|<textarea|<select|<form/)
+
+      const processing = render({ ...base, status: 'Processing' })
+      assert.deepEqual(moveButtons(processing), ['Order Confirmed', 'Packing The Order', 'Ready To Deliver', 'On Delivery Partner'])
+      const onDelivery = render({ ...base, status: 'On Delivery Partner' })
+      assert.deepEqual(moveButtons(onDelivery), ['Order Confirmed', 'Processing', 'Packing The Order', 'Ready To Deliver'])
+      assert.match(onDelivery, /Mark delivered/)
+
+      const placed = render({ ...base, status: 'Order Is Placed', deliveryPrice: null, payableTotal: null })
+      assert.match(placed, /admin-order-detail-cancel">Cancel order<\/button>/)
+      assert.doesNotMatch(placed, /Move to|Mark delivered|admin-order-detail-status-group/)
+
+      for (const status of ['Delivered', 'Cancelled']) {
+        const final = render({
+          ...base,
+          status,
+          payableTotal: status === 'Cancelled' ? null : 2030,
+          cancellation: status === 'Cancelled' ? { by: 'admin', reason: 'Out of stock', at: '2026-10-02T03:45:00.000Z' } : null,
+        })
+        assert.doesNotMatch(final, /Move to|Mark delivered|Cancel order|admin-order-detail-status"|<button/, status)
+        // Even a stale open modal is not drawn on a final order.
+        const stale = render({ ...base, status, payableTotal: null }, { modal: 'cancel' })
+        assert.doesNotMatch(stale, /role="dialog"/)
+      }
+
+      const shopCancelled = render({
+        ...base,
+        status: 'Cancelled',
+        payableTotal: null,
+        cancellation: { by: 'admin', reason: 'Out of stock', at: '2026-10-02T03:45:00.000Z' },
+      })
+      assert.match(shopCancelled, /<section class="admin-order-detail-section admin-order-detail-cancelled" aria-label="Cancellation"><p class="text-body-strong">Cancelled by the shop\.<\/p><p class="admin-order-detail-reason">Reason: (?:<!-- -->)?Out of stock<\/p>/)
+      const parentCancelled = render({
+        ...base,
+        status: 'Cancelled',
+        deliveryPrice: null,
+        payableTotal: null,
+        cancellation: { by: 'parent', reason: null, at: '2026-10-02T03:45:00.000Z' },
+      })
+      assert.match(parentCancelled, /Cancelled by the parent\./)
+      assert.doesNotMatch(parentCancelled, /Reason:/)
+
+      const busy = render(base, { busy: true })
+      for (const label of ['Processing', 'Mark delivered', 'Cancel order']) {
+        assert.match(busy, new RegExp(`aria-disabled="true">${label}<`), label)
+      }
+      assert.doesNotMatch(busy, /disabled=""/)
+
+      // The Delivered modal: one-deep, a solid destructive confirm and a secondary dismiss.
+      const delivered = render({ ...base, status: 'On Delivery Partner' }, { modal: 'delivered' })
+      assert.match(delivered, /<div class="modal-backdrop admin-order-detail-modal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-terminal-modal-title" aria-describedby="admin-terminal-modal-body" tab[iI]ndex="-1">/)
+      assert.match(delivered, /<h2 class="modal-title text-heading-md" id="admin-terminal-modal-title">Mark #1042 delivered\?<\/h2>/)
+      assert.match(delivered, /<p class="modal-body" id="admin-terminal-modal-body">Delivered is final\. This order can&#x27;t be moved again\.<\/p>/)
+      assert.match(delivered, /<div class="modal-actions"><button type="button" class="button-secondary">Cancel<\/button><button type="button" class="button-danger-solid">Mark delivered<\/button><\/div>/)
+      assert.doesNotMatch(delivered, /<textarea/)
+      assert.equal((delivered.match(/role="dialog"/g) ?? []).length, 1)
+
+      // The cancel modal: a required reason, at most 500 characters, kept with its inline error.
+      const cancelModal = render(base, { modal: 'cancel', reason: '   ', reasonError: REASON })
+      assert.match(cancelModal, /id="admin-terminal-modal-title">Cancel #1042\?<\/h2>/)
+      assert.match(cancelModal, /Cancelled is final\. The parent will see your reason\./)
+      assert.match(cancelModal, /<label class="text-label-caps" for="admin-order-cancel-reason">Reason for the parent<\/label>/)
+      assert.match(cancelModal, /<textarea id="admin-order-cancel-reason"[^>]*required=""[^>]*max[lL]ength="500"[^>]*aria-invalid="true"[^>]*aria-describedby="admin-order-cancel-reason-error"/)
+      assert.match(cancelModal, /<p id="admin-order-cancel-reason-error" class="form-error text-meta" role="alert">Write a short reason the parent will see, up to 500 characters\.<\/p>/)
+      assert.match(cancelModal, /<button type="button" class="button-secondary">Keep order<\/button><button type="button" class="button-danger-solid">Cancel order<\/button>/)
+      const typed = render(base, { modal: 'cancel', reason: 'Out of stock' })
+      assert.match(typed, />Out of stock<\/textarea>/)
+      const busyModal = render(base, { modal: 'cancel', reason: 'Out of stock', busy: true })
+      assert.match(busyModal, /class="button-secondary" aria-disabled="true">Keep order/)
+      assert.match(busyModal, /class="button-danger-solid" aria-disabled="true">Cancel order/)
+      const failed = render(base, { modal: 'delivered', modalError: 'Could not reach the shop. Try again.' })
+      assert.match(failed, /<p class="form-error text-meta" role="alert">Could not reach the shop\. Try again\.<\/p>/)
+
+      // The heading is the focus fallback once a final action removes its trigger.
+      assert.match(confirmed, /<h1 class="admin-order-detail-number page-heading text-heading-lg" id="admin-order-detail-heading" tab[iI]ndex="-1">#/)
+      // The polite live region is always there, empty until an action succeeds.
+      assert.match(confirmed, /<p class="admin-order-detail-announce visually-hidden" role="status" aria-live="polite"><\/p>/)
+      const announced = render({ ...base, status: 'Ready To Deliver' }, { announcement: transitionAnnouncement('Ready To Deliver') })
+      assert.match(announced, /role="status" aria-live="polite">Moved to Ready To Deliver\.<\/p>/)
+      // The reason is read-only while the cancel is in flight, and editable otherwise.
+      assert.match(busyModal, /<textarea id="admin-order-cancel-reason"[^>]*read[oO]nly=""/)
+      assert.doesNotMatch(typed, /read[oO]nly/)
+
+      // A 409 is shown in the page notice once the modal has closed.
+      const conflict = render(base, { notice: staleMessage('Processing') })
+      assert.match(conflict, /role="alert"><p class="notice-body">This order changed to Processing since you opened it/)
+    })
+
+    it('source: routes, CAS writes, no status literals, the only dialog in TerminalModal, token-only styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const adminHttp = (await read(ordersDir, 'admin-http.ts')).replace(/\r\n/g, '\n')
+      const adminSql = (await read(ordersDir, 'admin.ts')).replace(/\r\n/g, '\n')
+      const detailSql = await read(ordersDir, 'detail.ts')
+      const adminSrc = path.join(repoRoot, 'client', 'admin', 'src')
+      const page = await read(adminSrc, 'OrderDetailPage.tsx')
+      const modal = await read(adminSrc, 'TerminalModal.tsx')
+      const helper = await read(adminSrc, 'orders.ts')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Server: two POST routes in the 4.5 handler shape; strict parsers; no SQL in the router.
+      assert.doesNotMatch(adminHttp, /db\.prepare/)
+      assert.doesNotMatch(adminHttp, /router\.(patch|delete|put)\(/)
+      for (const route of ["router.post(\n    '/admin/orders/:id/status'", "router.post(\n    '/admin/orders/:id/cancel'"]) {
+        const at = adminHttp.indexOf(route)
+        assert.ok(at >= 0, `missing ${route}`)
+        const handler = adminHttp.slice(at, at + 600)
+        assert.match(handler, /safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)\s*if \(!requireAdmin\(db, env, req, res, ADMIN_ORDERS_FORBIDDEN\)\) return\s*const orderId = parseId\(req\.params\.id\)/)
+      }
+      for (const parser of ['parseExpectedStatus', 'parseMoveTarget', 'parseReason']) {
+        assert.match(adminHttp, new RegExp(`function ${parser}\\(value: unknown\\)`))
+      }
+      assert.match(adminHttp, /typeof value !== 'string'/)
+      assert.match(adminHttp, /'expectedStatus'\)/)
+      assert.match(adminHttp, /'status'\)/)
+      assert.match(adminHttp, /'reason'\)/)
+
+      // admin.ts: one immediate CAS per write, then a re-read; the cancel clears the payable.
+      assert.match(adminSql, /export function moveOrderStatus\(/)
+      assert.match(adminSql, /export function cancelAdminOrder\(/)
+      assert.match(adminSql, /UPDATE orders SET status = \? WHERE id = \? AND status = \?/)
+      assert.match(
+        adminSql,
+        /UPDATE orders\s+SET status = 'Cancelled', cancelled_by = 'admin', cancellation_reason = \?, cancelled_at = \?,\s+payable_total_rupees = NULL\s+WHERE id = \? AND status = \?/,
+      )
+      assert.match(adminSql, /export const MOVE_TARGETS/)
+      assert.doesNotMatch(adminSql, /delivery_price_rupees = NULL/)
+      // The parent module never writes the shop's reason.
+      assert.doesNotMatch(detailSql, /cancellation_reason\s*=/)
+
+      // Client: no status literals, no storage, no select / PATCH / DELETE; the only dialog and
+      // the only textarea live in TerminalModal.tsx, which the storefront modal is not imported into.
+      const adminFiles = (await readdir(adminSrc)).filter((name) => /\.tsx?$/.test(name))
+      for (const name of adminFiles) {
+        const source = await read(adminSrc, name)
+        assert.doesNotMatch(source, /from '[^']*storefront[^']*'/, name)
+        if (name !== 'TerminalModal.tsx') assert.doesNotMatch(source, /role="dialog"|aria-modal/, name)
+      }
+      for (const [name, source] of [['OrderDetailPage.tsx', page], ['TerminalModal.tsx', modal], ['orders.ts', helper]]) {
+        assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/, name)
+        assert.doesNotMatch(source, /<select|method: 'PATCH'|method: 'DELETE'/, name)
+        if (name !== 'TerminalModal.tsx') assert.doesNotMatch(source, /textarea/, name)
+      }
+      for (const source of [page, modal, helper]) {
+        assert.doesNotMatch(
+          source,
+          /'(Order Is Placed|Order Confirmed|Processing|Packing The Order|Ready To Deliver|On Delivery Partner|Delivered|Cancelled)'|"(Order Is Placed|Order Confirmed|Processing|Packing The Order|Ready To Deliver|On Delivery Partner|Delivered|Cancelled)"/,
+        )
+      }
+      assert.match(modal, /role="dialog"/)
+      assert.match(modal, /aria-modal="true"/)
+      assert.match(modal, /event\.key === 'Escape'/)
+      assert.match(modal, /if \(!busy\) onClose\(\)/)
+      assert.match(modal, /event\.key !== 'Tab'/)
+      assert.match(modal, /querySelectorAll<HTMLElement>\('textarea, button'\)/)
+      assert.match(modal, /previous\.focus\(\)/)
+      assert.match(modal, /className="button-danger-solid"/)
+      assert.match(modal, /className="button-secondary"/)
+      // The backdrop never closes the dialog.
+      const backdrop = modal.slice(modal.indexOf('className="modal-backdrop'), modal.indexOf('role="dialog"'))
+      assert.doesNotMatch(backdrop, /onClick|onClose/)
+      assert.match(page, /import \{ TerminalModal \} from '\.\/TerminalModal'/)
+      // Moves go straight through act(); only Delivered and Cancel open a modal.
+      assert.match(page, /void act\(adminOrderStatusPath\(orderId\), moveBody\(order\.status, to\), announceOutcome\)/)
+      assert.match(page, /moveBody\(order\.status, DELIVERED_STATUS\), announceOutcome\)/)
+      assert.match(page, /cancelBody\(order\.status, trimmed\), announceOutcome\)/)
+      assert.match(page, /failure\?\.error\?\.field === 'reason'/)
+      // A 409 closes the modal but keeps the typed reason; only success or a dismiss drops it.
+      assert.match(page, /hideModal\(\)\s*setNotice\(apiMessage\(failure, ACTION_FAILED\)\)\s*await load\(\)/)
+      const hide = page.slice(page.indexOf('const hideModal'), page.indexOf('const closeModal'))
+      assert.ok(hide.length > 0)
+      assert.doesNotMatch(hide, /setReason\(/)
+      assert.doesNotMatch(page.slice(page.indexOf('const openModal'), page.indexOf('const confirmModal')), /setReason\(/)
+      // Success is announced politely, and every announcement is cleared by the next action.
+      assert.match(page, /role="status" aria-live="polite"/)
+      assert.match(page, /if \(announce\) setAnnouncement\(announce\(parsed\)\)/)
+      assert.match(page, /setModalError\(''\)\s*setAnnouncement\(''\)/)
+      assert.equal((page.match(/fallbackFocusId=\{HEADING_ID\}/g) ?? []).length, 2)
+      assert.match(modal, /readOnly=\{busy\}/)
+      assert.match(modal, /document\.getElementById\(fallbackRef\.current\)/)
+      assert.equal((page.match(/<TerminalModal/g) ?? []).length, 2)
+
+      // Styles: the new rules sit on tokens only, and the modal opens with no animation.
+      const rules = [...baseCss.matchAll(/(?:^|\n)[ \t]*([^{}\n]*\.admin-order-detail-(?:status|cancel|reason|modal)[^{}]*)\{([^}]*)\}/g)]
+      assert.ok(rules.length >= 8, `4.6 rules are missing (${rules.length})`)
+      for (const [, selector, body] of rules) {
+        assert.doesNotMatch(body, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(?:white|black)(?![\w-])/, `${selector.trim()} uses a raw colour`)
+        assert.doesNotMatch(body, /\d+px/, `${selector.trim()} uses a raw size`)
+        for (const color of body.matchAll(/(?:color|background|border[\w-]*|outline):\s*([^;]+);/g)) {
+          assert.match(color[1], /var\(--|none|^0$|^0 /, `${selector.trim()} ${color[0]}`)
+        }
+      }
+      assert.match(cssRule(baseCss, '.admin-order-detail-modal'), /animation: none/)
+      assert.match(cssRule(baseCss, '.admin-order-detail-status-final'), /flex-wrap: wrap/)
     })
   })
 })

@@ -80,7 +80,7 @@ development_status:
   4-2-place-order-snapshot-number-one-tap: done
   4-3-my-orders-pipeline-cancel-and-reason: done
   4-4-admin-orders-one-list-open-and-past: done
-  4-5-confirm-the-order-and-mark-the-call: review
-  4-6-advance-skip-forward-and-close-the-order: backlog
+  4-5-confirm-the-order-and-mark-the-call: done
+  4-6-advance-skip-forward-and-close-the-order: review
   4-7-export-the-season: backlog
   epic-4-retrospective: optional

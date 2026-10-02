@@ -1,4 +1,5 @@
 import {
+  CANCELLED_STATUS,
   ORDER_STATUSES,
   PIPELINE_STAGES,
   isOrderStatus,
@@ -38,6 +39,30 @@ export const OPEN_STATUSES: readonly OrderStatus[] = PIPELINE_STAGES.slice(0, -1
 export const PAST_STATUSES: readonly OrderStatus[] = ORDER_STATUSES.filter(
   (status) => !OPEN_STATUSES.includes(status),
 )
+
+/** The second stage: confirmed with a delivery charge, the floor for any backward move. */
+export const CONFIRMED_STATUS: OrderStatus = ORDER_STATUSES[1]
+
+/** The last pipeline stage; reaching it is final. */
+export const DELIVERED_STATUS: OrderStatus = PIPELINE_STAGES[PIPELINE_STAGES.length - 1]
+
+/**
+ * The statuses the shop can move an order from, in pipeline order: Order Confirmed through the
+ * stage before Delivered. They are also the `Move to` targets (Delivered has its own button).
+ */
+export const MOVABLE_FROM: readonly OrderStatus[] = PIPELINE_STAGES.slice(1, -1)
+
+/** Delivered or Cancelled: nothing moves an order on from here. */
+export function isTerminal(status: OrderStatus): boolean {
+  return PAST_STATUSES.includes(status)
+}
+
+/** The polite announcement after a successful move, deliver or cancel. */
+export function transitionAnnouncement(status: OrderStatus): string {
+  if (status === DELIVERED_STATUS) return 'Marked delivered.'
+  if (status === CANCELLED_STATUS) return 'Order cancelled.'
+  return `Moved to ${status}.`
+}
 
 export function adminOrdersPath(): string {
   return '/api/admin/orders'
@@ -141,6 +166,38 @@ export function adminOrderCallAttemptedPath(id: number): string {
 
 export function adminOrderConfirmPath(id: number): string {
   return `/api/admin/orders/${id}/confirm`
+}
+
+export function adminOrderStatusPath(id: number): string {
+  return `/api/admin/orders/${id}/status`
+}
+
+export function adminOrderCancelPath(id: number): string {
+  return `/api/admin/orders/${id}/cancel`
+}
+
+export function moveBody(
+  expectedStatus: OrderStatus,
+  status: OrderStatus,
+): { expectedStatus: OrderStatus; status: OrderStatus } {
+  return { expectedStatus, status }
+}
+
+export function cancelBody(
+  expectedStatus: OrderStatus,
+  reason: string,
+): { expectedStatus: OrderStatus; reason: string } {
+  return { expectedStatus, reason }
+}
+
+/** The same copy the server answers for a missing, blank or too-long cancellation reason. */
+export const REASON_MESSAGE = 'Write a short reason the parent will see, up to 500 characters.'
+export const REASON_MAX_LENGTH = 500
+
+/** The trimmed reason, or undefined when it is blank or longer than the server accepts. */
+export function reasonFrom(text: string): string | undefined {
+  const reason = text.trim()
+  return reason.length >= 1 && reason.length <= REASON_MAX_LENGTH ? reason : undefined
 }
 
 /** The same copy the server answers for a bad delivery price. */

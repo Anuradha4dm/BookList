@@ -82,3 +82,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-5-confirm-the-order-and-mark-the-call.md`
   summary: The `OrderDetailPage` action state machine (409 notice and refetch, 401 sign-out clearing contacts, single-submit guard, 400 field error, success swap) is pinned only by source-text regexes, not by running the page against stubbed fetch answers.
   evidence: The 4.5 verification-gap review showed that dropping `void load()` from the 409 branch or `setOrder(parsed)` from the success branch leaves every io-matrix assertion green, because the repo has no DOM test harness (jsdom or Testing Library).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-6-advance-skip-forward-and-close-the-order.md`
+  summary: Add a DOM-mounted test harness (jsdom plus stubbed fetch) that drives OrderDetailPage's terminal-action modal flow (200, 400 reason, 409, 500, network) and TerminalModal's Escape, focus trap, busy guard and focus restore.
+  evidence: 4.6 added modal state branches and keyboard handling that are verified only by source-text regexes and static renders, so a behaviour regression would keep io-matrix green. This extends the 4.5 action-state-machine gap already recorded above.
