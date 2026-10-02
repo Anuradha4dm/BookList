@@ -1,0 +1,6 @@
+# SITE_ADDRESS is a domain (test.example.com) for automatic HTTPS,
+# or ":80" for plain HTTP on the server's IP while there is no domain yet.
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy app:3000
+}

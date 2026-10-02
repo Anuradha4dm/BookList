@@ -1,0 +1,31 @@
+# Copied to /opt/booklist/docker-compose.yml on the server by every deploy.
+# IMAGE and SITE_ADDRESS come from /opt/booklist/.env; app secrets from /opt/booklist/app.env.
+services:
+  app:
+    image: ${IMAGE:?IMAGE is not set}
+    restart: unless-stopped
+    env_file: app.env
+    environment:
+      PORT: "3000"
+      DATABASE_PATH: /data/booklist.db
+    volumes:
+      - /data/booklist:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS is not set}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
