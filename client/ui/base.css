@@ -2110,6 +2110,62 @@ summary,
   max-width: 280px;
 }
 
+/* Status: the Move to group in pipeline order, then the two final actions behind a modal. */
+.admin-order-detail-status-label {
+  color: var(--color-text-secondary);
+}
+
+.admin-order-detail-status-group,
+.admin-order-detail-status-final {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.admin-order-detail-status-final {
+  padding-top: var(--space-2);
+  border-top: var(--space-edge-hairline) solid var(--color-border-default);
+}
+
+.admin-order-detail-status .button-secondary,
+.admin-order-detail-status .button-primary {
+  width: auto;
+  min-height: var(--space-touch-min);
+}
+
+.admin-order-detail-status .admin-order-detail-cancel {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* A cancelled order: who cancelled it, and the reason the parent sees. */
+.admin-order-detail-cancelled {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-strong);
+}
+
+.admin-order-detail-reason {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* The final-action modal opens and closes with no motion on the path to the next change. */
+.admin-order-detail-modal {
+  animation: none;
+}
+
+.admin-order-detail-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.admin-order-detail-modal-textarea {
+  min-height: calc(var(--space-touch-min) * 2);
+  resize: vertical;
+  font-family: var(--font-sans);
+}
+
 .admin-order-detail .button-primary[aria-disabled='true'],
 .admin-order-detail .button-secondary[aria-disabled='true'] {
   opacity: 0.6;
