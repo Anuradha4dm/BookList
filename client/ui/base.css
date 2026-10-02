@@ -1374,6 +1374,370 @@ summary,
   }
 }
 
+/* Status pill: step number, glyph, border band and corners carry the status before hue. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 5px 9px;
+  border: var(--space-edge-hairline) solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: var(--text-pill-label-size);
+  font-weight: var(--text-pill-label-weight);
+  line-height: var(--text-pill-label-line);
+  letter-spacing: var(--text-pill-label-tracking);
+  white-space: nowrap;
+}
+
+.status-pill-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  padding: 1px 2px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-step-number-size);
+  font-weight: var(--text-step-number-weight);
+  line-height: var(--text-step-number-line);
+  letter-spacing: var(--text-step-number-tracking);
+}
+
+.status-glyph {
+  flex: none;
+}
+
+.status-pill-plain {
+  font-family: var(--font-sans);
+  font-size: var(--text-meta-size);
+  font-weight: var(--text-meta-weight);
+}
+
+.status-pill-placed {
+  background: var(--color-status-placed-fill);
+  color: var(--color-status-placed-ink);
+  border-color: var(--color-status-placed-edge);
+  border-style: dashed;
+}
+
+.status-pill-confirmed {
+  background: var(--color-status-confirmed-fill);
+  color: var(--color-status-confirmed-ink);
+  border-color: var(--color-status-confirmed-edge);
+}
+
+.status-pill-processing {
+  background: var(--color-status-processing-fill);
+  color: var(--color-status-processing-ink);
+  border-color: var(--color-status-processing-edge);
+}
+
+.status-pill-packing {
+  background: var(--color-status-packing-fill);
+  color: var(--color-status-packing-ink);
+  border-color: var(--color-status-packing-edge);
+}
+
+.status-pill-ready {
+  background: var(--color-status-ready-fill);
+  color: var(--color-status-ready-ink);
+  border-color: var(--color-status-ready-edge);
+  border-width: var(--space-edge-strong);
+}
+
+.status-pill-partner {
+  background: var(--color-status-partner-fill);
+  color: var(--color-status-partner-ink);
+  border-color: var(--color-status-partner-edge);
+}
+
+.status-pill-delivered {
+  background: var(--color-status-delivered-fill);
+  color: var(--color-status-delivered-ink);
+  border-color: var(--color-status-delivered-edge);
+  border-width: var(--space-edge-strong);
+  border-radius: var(--radius-xs);
+}
+
+.status-pill-cancelled {
+  background: var(--color-status-cancelled-fill);
+  color: var(--color-status-cancelled-ink);
+  border-color: var(--color-status-cancelled-edge);
+  border-width: var(--space-edge-strong);
+  border-radius: var(--radius-xs);
+}
+
+.status-pill-cancelled .status-pill-label {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+/* My Orders rows open inline: the whole summary is one disclosure button. */
+.order-row-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--space-touch-min);
+  padding: var(--space-1) 0;
+  text-align: left;
+  color: var(--color-text-primary);
+}
+
+.order-row-meta-start {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.order-row-chevron {
+  transition: transform 160ms;
+}
+
+.order-row-toggle[aria-expanded='true'] .order-row-chevron {
+  transform: rotate(180deg);
+}
+
+.order-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: var(--space-edge-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  animation: fade-in 160ms ease-out;
+}
+
+.order-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.order-detail-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-detail-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--space-edge-hairline) solid var(--color-border-default);
+}
+
+.order-detail-line-main,
+.order-detail-book,
+.order-detail-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.order-detail-books {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-secondary);
+}
+
+.order-detail-totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: var(--space-edge-strong) solid var(--color-border-strong);
+}
+
+.order-detail-reason {
+  margin: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Vertical timeline: ticked, current, then quiet. Never a horizontal stepper. */
+.order-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-timeline-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 28px;
+  color: var(--color-text-secondary);
+}
+
+.order-timeline-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: var(--space-edge-hairline) dashed var(--color-border-default);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-base);
+}
+
+.order-timeline-step.is-done {
+  color: var(--color-text-primary);
+}
+
+.order-timeline-step.is-done .order-timeline-marker {
+  border-style: solid;
+  border-color: var(--color-border-strong);
+}
+
+.order-timeline-step.is-current {
+  color: var(--color-text-primary);
+}
+
+.order-timeline-step.is-current .order-timeline-marker {
+  border: var(--space-edge-strong) solid var(--color-border-strong);
+}
+
+.order-timeline-step.is-current .order-timeline-label {
+  font-size: var(--text-heading-sm-size);
+  font-weight: var(--text-heading-sm-weight);
+  line-height: var(--text-heading-sm-line);
+}
+
+/* Info notice: the delivery charge is still to be confirmed. */
+.notice-info {
+  background: var(--color-info-tint);
+  border-color: var(--color-info);
+}
+
+.notice-info > .notice-title {
+  color: var(--color-info);
+}
+
+/* The confirming action inside a terminal-action modal only. */
+.button-danger-solid {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--space-touch-min);
+  padding: 0 var(--space-4);
+  background: var(--color-danger);
+  color: var(--color-surface-base);
+  border: var(--space-edge-hairline) solid var(--color-danger);
+  border-radius: var(--radius-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-strong-size);
+  font-weight: var(--text-body-strong-weight);
+  line-height: var(--text-body-strong-line);
+}
+
+.button-danger-solid:disabled {
+  cursor: wait;
+}
+
+/* Modal buttons stay focusable while a cancel runs, so busy is aria-disabled, not disabled. */
+.button-danger-solid[aria-disabled='true'],
+.button-secondary[aria-disabled='true'] {
+  opacity: 0.6;
+  box-shadow: none;
+  cursor: wait;
+}
+
+.order-detail-cancel {
+  align-self: flex-start;
+  width: auto;
+}
+
+/* Modal confirmation: one level deep, terminal actions only. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-gutter);
+  background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
+  animation: fade-in 160ms ease-out;
+}
+
+[data-theme='dark'] .modal-backdrop {
+  background: color-mix(in srgb, var(--color-surface-sunken) 70%, transparent);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 420px;
+  padding: var(--space-5);
+  background: var(--color-surface-raised);
+  border: var(--space-edge-strong) solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--space-lift-offset) var(--space-lift-offset) 0 var(--color-border-strong);
+}
+
+[data-theme='dark'] .modal {
+  box-shadow: var(--space-lift-offset) var(--space-lift-offset) 0 var(--color-surface-sunken);
+}
+
+.modal-title {
+  margin: 0;
+}
+
+.modal-body {
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.modal-actions > .button-secondary {
+  width: auto;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1384,6 +1748,10 @@ summary,
   }
 
   .press-travel:active {
+    transform: none;
+  }
+
+  .order-row-toggle[aria-expanded='true'] .order-row-chevron {
     transform: none;
   }
 

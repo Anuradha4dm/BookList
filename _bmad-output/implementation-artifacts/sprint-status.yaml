@@ -1,5 +1,5 @@
 # generated: 2026-09-09T16:59:33
-# last_updated: 2026-10-01
+# last_updated: 2026-10-02
 # project: BookList
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-09-09T16:59:33
-last_updated: 2026-10-01
+last_updated: 2026-10-02
 project: BookList
 project_key: NOKEY
 tracking_system: file-system
@@ -77,8 +77,8 @@ development_status:
   # Epic 4: Capture the order and work the morning list
   epic-4: in-progress
   4-1-checkout-address-delivery-line-note-and-stale-lines: done
-  4-2-place-order-snapshot-number-one-tap: review
-  4-3-my-orders-pipeline-cancel-and-reason: backlog
+  4-2-place-order-snapshot-number-one-tap: done
+  4-3-my-orders-pipeline-cancel-and-reason: review
   4-4-admin-orders-one-list-open-and-past: backlog
   4-5-confirm-the-order-and-mark-the-call: backlog
   4-6-advance-skip-forward-and-close-the-order: backlog
