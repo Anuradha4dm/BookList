@@ -43,7 +43,7 @@ export function blockedMessage(count: number): string {
     : `${count} lines still need attention.`
 }
 
-type OrderSqlRow = {
+export type OrderSqlRow = {
   id: number
   public_number: number
   status: string
@@ -51,9 +51,9 @@ type OrderSqlRow = {
   placed_at: string
 }
 
-const SUMMARY_COLUMNS = 'id, public_number, status, goods_total_rupees, placed_at'
+export const SUMMARY_COLUMNS = 'id, public_number, status, goods_total_rupees, placed_at'
 
-function toSummary(row: OrderSqlRow): OrderSummary {
+export function toSummary(row: OrderSqlRow): OrderSummary {
   return {
     id: row.id,
     publicNumber: row.public_number,

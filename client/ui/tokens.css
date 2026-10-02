@@ -43,6 +43,57 @@
   --color-success-tint-dark: #0E3A28;
   --color-info-tint-dark: #122A45;
 
+  /* Pipeline status ramp: only the status pill and the parent timeline use these. */
+  --color-status-placed-fill: #4A4A4E;
+  --color-status-placed-ink: #FFFFFF;
+  --color-status-placed-edge: #74747A;
+  --color-status-confirmed-fill: #14477F;
+  --color-status-confirmed-ink: #FFFFFF;
+  --color-status-confirmed-edge: #2E6BA8;
+  --color-status-processing-fill: #4E3390;
+  --color-status-processing-ink: #FFFFFF;
+  --color-status-processing-edge: #7357BC;
+  --color-status-packing-fill: #7C2460;
+  --color-status-packing-ink: #FFFFFF;
+  --color-status-packing-edge: #AE4489;
+  --color-status-ready-fill: #E8A61A;
+  --color-status-ready-ink: #0B1B33;
+  --color-status-ready-edge: #0B1B33;
+  --color-status-partner-fill: #0A5C6B;
+  --color-status-partner-ink: #FFFFFF;
+  --color-status-partner-edge: #1A7F8F;
+  --color-status-delivered-fill: #0E5C3C;
+  --color-status-delivered-ink: #FFFFFF;
+  --color-status-delivered-edge: #1F8258;
+  --color-status-cancelled-fill: #A81D14;
+  --color-status-cancelled-ink: #FFFFFF;
+  --color-status-cancelled-edge: #CF3B31;
+
+  --color-status-placed-fill-dark: #C4C9D0;
+  --color-status-placed-ink-dark: #08131F;
+  --color-status-placed-edge-dark: #8E949C;
+  --color-status-confirmed-fill-dark: #8FC0FF;
+  --color-status-confirmed-ink-dark: #08131F;
+  --color-status-confirmed-edge-dark: #6C9BD0;
+  --color-status-processing-fill-dark: #BBA6F2;
+  --color-status-processing-ink-dark: #08131F;
+  --color-status-processing-edge-dark: #9584D0;
+  --color-status-packing-fill-dark: #F09AD0;
+  --color-status-packing-ink-dark: #08131F;
+  --color-status-packing-edge-dark: #C47AAB;
+  --color-status-ready-fill-dark: #F0B434;
+  --color-status-ready-ink-dark: #0B1B33;
+  --color-status-ready-edge-dark: #FFD98A;
+  --color-status-partner-fill-dark: #6FD0E2;
+  --color-status-partner-ink-dark: #08131F;
+  --color-status-partner-edge-dark: #4FA0B2;
+  --color-status-delivered-fill-dark: #6BDCA8;
+  --color-status-delivered-ink-dark: #08131F;
+  --color-status-delivered-edge-dark: #4FA97C;
+  --color-status-cancelled-fill-dark: #FF9A90;
+  --color-status-cancelled-ink-dark: #08131F;
+  --color-status-cancelled-edge-dark: #C8756B;
+
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
   --text-display-size: 34px;
@@ -151,4 +202,28 @@
   --color-warn-tint: #43300A;
   --color-success-tint: #0E3A28;
   --color-info-tint: #122A45;
+  --color-status-placed-fill: #C4C9D0;
+  --color-status-placed-ink: #08131F;
+  --color-status-placed-edge: #8E949C;
+  --color-status-confirmed-fill: #8FC0FF;
+  --color-status-confirmed-ink: #08131F;
+  --color-status-confirmed-edge: #6C9BD0;
+  --color-status-processing-fill: #BBA6F2;
+  --color-status-processing-ink: #08131F;
+  --color-status-processing-edge: #9584D0;
+  --color-status-packing-fill: #F09AD0;
+  --color-status-packing-ink: #08131F;
+  --color-status-packing-edge: #C47AAB;
+  --color-status-ready-fill: #F0B434;
+  --color-status-ready-ink: #0B1B33;
+  --color-status-ready-edge: #FFD98A;
+  --color-status-partner-fill: #6FD0E2;
+  --color-status-partner-ink: #08131F;
+  --color-status-partner-edge: #4FA0B2;
+  --color-status-delivered-fill: #6BDCA8;
+  --color-status-delivered-ink: #08131F;
+  --color-status-delivered-edge: #4FA97C;
+  --color-status-cancelled-fill: #FF9A90;
+  --color-status-cancelled-ink: #08131F;
+  --color-status-cancelled-edge: #C8756B;
 }

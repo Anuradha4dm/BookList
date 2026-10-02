@@ -7,6 +7,8 @@ import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { profileDraftFromGet, profilePatchBody } from '../../client/storefront/src/accountProfile.ts'
 import {
   parentsFindQuery,
@@ -179,6 +181,8 @@ const CHECKOUT_PORT = String(18782)
 const checkoutBaseUrl = `http://127.0.0.1:${CHECKOUT_PORT}`
 const ORDERS_PORT = String(18783)
 const ordersBaseUrl = `http://127.0.0.1:${ORDERS_PORT}`
+const ORDERS_DETAIL_PORT = String(18784)
+const ordersDetailBaseUrl = `http://127.0.0.1:${ORDERS_DETAIL_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -333,7 +337,7 @@ describe('I/O & edge-case matrix', () => {
       try {
         assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
         const applied = db.prepare('SELECT COUNT(*) AS n FROM applied_migrations').get() as { n: number }
-        assert.equal(applied.n, 9)
+        assert.equal(applied.n, 10)
       } finally {
         db.close()
       }
@@ -2270,7 +2274,7 @@ describe('I/O & edge-case matrix', () => {
           const applied = upgraded
             .prepare('SELECT COUNT(*) AS n FROM applied_migrations')
             .get() as { n: number }
-          assert.equal(applied.n, 9)
+          assert.equal(applied.n, 10)
           const parents = upgraded
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'parents'")
             .get()
@@ -9078,7 +9082,6 @@ describe('I/O & edge-case matrix', () => {
       assert.match(ordersPage, /timeZone: 'Asia\/Colombo'/)
       assert.match(ordersPage, /role="alert"/)
       assert.doesNotMatch(ordersPage, /localStorage|sessionStorage|indexedDB/)
-      assert.doesNotMatch(ordersPage, /Cancel|payable|delivery(Price|Fee|Charge)/i)
 
       const gated = storefrontApp.match(/<Route element=\{<AuthGate \/>\}>([\s\S]*?)<\/Route>/)?.[1]
       assert.ok(gated)
@@ -9105,6 +9108,863 @@ describe('I/O & edge-case matrix', () => {
           ordersPlace.indexOf('INSERT INTO orders'),
       )
       assert.doesNotMatch(ordersPlace, /is not live/)
+    })
+  })
+
+  describe('My Orders — pipeline, cancel, and reason', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parentSerial = 0
+
+    type OrderJson = {
+      id: number
+      publicNumber: number
+      status: string
+      goodsTotal: number
+      placedAt: string
+    }
+    type DetailJson = {
+      id: number
+      publicNumber: number
+      status: string
+      placedAt: string
+      goodsTotal: number
+      deliveryPrice: number | null
+      payableTotal: number | null
+      note: string | null
+      deliveryAddress: string
+      cancellation: null | { by: 'parent' | 'admin'; reason: string | null; at: string | null }
+      packLines: Array<{
+        packName: string
+        label: string
+        gradeName: string
+        lineTotal: number
+        books: Array<{ title: string; unitPrice: number; quantity: number }>
+      }>
+      itemLines: Array<{ title: string; unitPrice: number; quantity: number; lineTotal: number }>
+    }
+    type ErrorBody = { error: { code: string; message: string } }
+    type Parent = { cookie: string; id: number; name: string }
+    type Titled = { id: number; title: string }
+    type Seeded = {
+      parent: Parent
+      atlas: Titled
+      reader: Titled
+      workbook: Titled
+      item: Titled
+      packId: number
+      packName: string
+      gradeName: string
+    }
+
+    const CONFIRMED_MESSAGE =
+      'The shop confirmed this order before your cancel arrived, so it can no longer be cancelled here.'
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${ordersDetailBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(
+      method: 'POST' | 'PATCH' | 'DELETE',
+      pathName: string,
+      body: unknown,
+      expected: number,
+    ): Promise<unknown> {
+      const response = await fetch(`${ordersDetailBaseUrl}${pathName}`, {
+        method,
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      assert.equal(response.status, expected, `${method} ${pathName}: ${response.status}`)
+      return expected === 204 ? undefined : await response.json()
+    }
+
+    async function registerParent(tag: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `detail.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const name = `Detail ${tag}`
+      const response = await fetch(`${ordersDetailBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          deliveryAddress: '12 Temple Road, Nugegoda',
+          whatsapp: '0771234567',
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const id = readDb(
+        (db) => (db.prepare('SELECT id FROM parents WHERE email = ?').get(email) as { id: number }).id,
+      )
+      return { cookie: cookieHeader(cookie), id, name }
+    }
+
+    /** Atlas x2 @1,500 and Reader x1 @800 ticked, Workbook @900 unticked; an item x3 @120. */
+    async function seed(tag: string, parent?: Parent): Promise<Seeded> {
+      const s = `${Date.now()}-${tag}`
+      const schoolId = ((await adminSend('POST', '/api/admin/schools', catalogNameBody(`Detail school ${s}`), 201)) as { id: number }).id
+      const gradeName = `Grade ${s}`
+      const gradeId = ((await adminSend('POST', '/api/admin/grades', catalogNameBody(gradeName), 201)) as { id: number }).id
+      const atlas = (await adminSend('POST', '/api/admin/books', bookBody(`Atlas ${s}`, 1500), 201)) as Titled
+      const reader = (await adminSend('POST', '/api/admin/books', bookBody(`Reader ${s}`, 800), 201)) as Titled
+      const workbook = (await adminSend('POST', '/api/admin/books', bookBody(`Workbook ${s}`, 900), 201)) as Titled
+      const packName = `Detail pack ${s}`
+      const pack = (await adminSend(
+        'POST',
+        '/api/admin/packs',
+        packCreateBody(packName, schoolId, gradeId, 'Detail', [atlas.id, reader.id, workbook.id]),
+        201,
+      )) as { id: number }
+      const item = (await adminSend('POST', '/api/admin/items', itemBody(`Pencil ${s}`, 'Stationery', 120), 201)) as Titled
+      const owner = parent ?? (await registerParent(tag))
+      const packResponse = await fetch(`${ordersDetailBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${atlas.id}:2,${reader.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      const itemResponse = await fetch(`${ordersDetailBaseUrl}/api/cart/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ itemId: item.id, quantity: 3 }),
+      })
+      assert.ok(itemResponse.status === 201 || itemResponse.status === 200, `add item ${itemResponse.status}`)
+      return { parent: owner, atlas, reader, workbook, item, packId: pack.id, packName, gradeName }
+    }
+
+    async function placeOne(tag: string, note?: string): Promise<{ seeded: Seeded; order: OrderJson }> {
+      const seeded = await seed(tag)
+      const response = await fetch(`${ordersDetailBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: seeded.parent.cookie,
+          'Idempotency-Key': `detail-${tag}`,
+        },
+        body: JSON.stringify(note === undefined ? {} : { note }),
+      })
+      assert.equal(response.status, 201)
+      return { seeded, order: ((await response.json()) as { order: OrderJson }).order }
+    }
+
+    function getDetail(cookie: string | undefined, id: string | number): Promise<Response> {
+      return fetch(`${ordersDetailBaseUrl}/api/orders/${id}`, {
+        headers: cookie ? { cookie } : {},
+      })
+    }
+
+    function cancel(cookie: string | undefined, id: string | number): Promise<Response> {
+      return fetch(`${ordersDetailBaseUrl}/api/orders/${id}/cancel`, {
+        method: 'POST',
+        headers: cookie ? { cookie } : {},
+      })
+    }
+
+    async function detailOf(cookie: string, id: number): Promise<DetailJson> {
+      const response = await getDetail(cookie, id)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as { order: DetailJson }
+      assert.deepEqual(Object.keys(body), ['order'])
+      return body.order
+    }
+
+    async function listOrders(cookie: string): Promise<OrderJson[]> {
+      const response = await fetch(`${ordersDetailBaseUrl}/api/orders`, { headers: { cookie } })
+      assert.equal(response.status, 200)
+      return ((await response.json()) as { orders: OrderJson[] }).orders
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    /** Direct DB writes stand in for the admin stories (4.5, 4.6) that do not exist yet. */
+    function writeDb(write: (db: Database.Database) => void): void {
+      const db = new Database(dbPath)
+      try {
+        write(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    function orderRow(id: number): Record<string, unknown> {
+      return readDb((db) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown>)
+    }
+
+    async function expectRefused(
+      response: Response,
+      status: number,
+      code: string,
+      message?: string,
+    ): Promise<void> {
+      assert.equal(response.status, status)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as ErrorBody
+      assert.equal(body.error.code, code)
+      if (message !== undefined) assert.equal(body.error.message, message)
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-orders-detail-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, ORDERS_DETAIL_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    let a: { seeded: Seeded; order: OrderJson }
+    // Real answers from the HTTP cases, later fed through the client parser.
+    let detailAnswer: unknown
+    let cancelAnswer: unknown
+
+    it('detail: the parent opens their placed order and gets the snapshot, lines in position order', async () => {
+      a = await placeOne('detail', ' Gate 2 ')
+      const detail = await detailOf(a.seeded.parent.cookie, a.order.id)
+      detailAnswer = { order: detail }
+      assert.deepEqual(Object.keys(detail).sort(), [
+        'cancellation',
+        'deliveryAddress',
+        'deliveryPrice',
+        'goodsTotal',
+        'id',
+        'itemLines',
+        'note',
+        'packLines',
+        'payableTotal',
+        'placedAt',
+        'publicNumber',
+        'status',
+      ])
+      assert.equal(detail.id, a.order.id)
+      assert.equal(detail.publicNumber, a.order.publicNumber)
+      assert.equal(detail.status, 'Order Is Placed')
+      assert.equal(detail.placedAt, a.order.placedAt)
+      assert.equal(detail.goodsTotal, 4160)
+      assert.equal(detail.deliveryPrice, null)
+      assert.equal(detail.payableTotal, null)
+      assert.equal(detail.cancellation, null)
+      assert.equal(detail.note, 'Gate 2')
+      assert.equal(detail.deliveryAddress, '12 Temple Road, Nugegoda')
+      // Only the two included books: the unticked Workbook is not in the order.
+      assert.deepEqual(detail.packLines, [
+        {
+          packName: a.seeded.packName,
+          label: `Pack 1 of ${a.seeded.gradeName}`,
+          gradeName: a.seeded.gradeName,
+          lineTotal: 3800,
+          books: [
+            { title: a.seeded.atlas.title, unitPrice: 1500, quantity: 2 },
+            { title: a.seeded.reader.title, unitPrice: 800, quantity: 1 },
+          ],
+        },
+      ])
+      assert.deepEqual(detail.itemLines, [
+        { title: a.seeded.item.title, unitPrice: 120, quantity: 3, lineTotal: 360 },
+      ])
+
+      // The list contract is unchanged: no payable or delivery values were added.
+      const listed = (await listOrders(a.seeded.parent.cookie)).find((entry) => entry.id === a.order.id)
+      assert.deepEqual(listed, a.order)
+      assert.deepEqual(Object.keys(listed ?? {}).sort(), ['goodsTotal', 'id', 'placedAt', 'publicNumber', 'status'])
+    })
+
+    it('snapshot holds: renaming and repricing in the catalog never changes the detail', async () => {
+      const before = await detailOf(a.seeded.parent.cookie, a.order.id)
+      await adminSend('PATCH', booksItemPath(a.seeded.atlas.id), bookBody(`Renamed ${a.seeded.atlas.title}`, 1750), 200)
+      await adminSend('PATCH', itemsItemPath(a.seeded.item.id), itemBody(`Renamed ${a.seeded.item.title}`, 'Stationery', 175), 200)
+      await adminSend(
+        'PATCH',
+        packsItemPath(a.seeded.packId),
+        packPatchBody(`Renamed ${a.seeded.packName}`, 'Detail', [a.seeded.atlas.id, a.seeded.reader.id, a.seeded.workbook.id]),
+        200,
+      )
+      assert.deepEqual(await detailOf(a.seeded.parent.cookie, a.order.id), before)
+    })
+
+    it('other parent or a bad id: 404 not_found on detail and cancel, never a 403, nothing changes', async () => {
+      const other = await registerParent('other')
+      const missing = readDb((db) => (db.prepare('SELECT MAX(id) AS n FROM orders').get() as { n: number }).n + 1000)
+      for (const id of [String(a.order.id), 'abc', '0', '-1', '1.5', '01', String(missing), '99999999999999999999']) {
+        const cookie = id === String(a.order.id) ? other.cookie : a.seeded.parent.cookie
+        await expectRefused(await getDetail(cookie, id), 404, 'not_found', 'Order not found.')
+        await expectRefused(await cancel(cookie, id), 404, 'not_found', 'Order not found.')
+      }
+      assert.equal(orderRow(a.order.id).status, 'Order Is Placed')
+    })
+
+    it('auth: 401 without a cookie and 403 for the admin on detail and cancel', async () => {
+      await expectRefused(await getDetail(undefined, a.order.id), 401, 'unauthenticated')
+      await expectRefused(await cancel(undefined, a.order.id), 401, 'unauthenticated')
+      await expectRefused(await getDetail(adminCookie, a.order.id), 403, 'forbidden', 'Only parents can view their orders.')
+      await expectRefused(await cancel(adminCookie, a.order.id), 403, 'forbidden', 'Only parents can view their orders.')
+      // An admin hitting a missing id still gets 403, not 404.
+      await expectRefused(await getDetail(adminCookie, 'abc'), 403, 'forbidden')
+      assert.equal(orderRow(a.order.id).status, 'Order Is Placed')
+    })
+
+    it('cancel: a placed order becomes Cancelled by the parent and stays listed', async () => {
+      const response = await cancel(a.seeded.parent.cookie, a.order.id)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = (await response.json()) as { order: DetailJson }
+      cancelAnswer = body
+      assert.equal(body.order.status, 'Cancelled')
+      assert.equal(body.order.payableTotal, null)
+      assert.equal(body.order.cancellation?.by, 'parent')
+      assert.equal(body.order.cancellation?.reason, null)
+      assert.ok(body.order.cancellation?.at)
+      assert.equal(new Date(body.order.cancellation.at).toISOString(), body.order.cancellation.at)
+      assert.equal(body.order.packLines.length, 1)
+      assert.deepEqual(await detailOf(a.seeded.parent.cookie, a.order.id), body.order)
+
+      const row = orderRow(a.order.id)
+      assert.equal(row.status, 'Cancelled')
+      assert.equal(row.cancelled_by, 'parent')
+      assert.equal(row.cancellation_reason, null)
+      assert.equal(row.payable_total_rupees, null)
+      assert.equal(row.cancelled_at, body.order.cancellation.at)
+
+      const listed = (await listOrders(a.seeded.parent.cookie)).find((entry) => entry.id === a.order.id)
+      assert.deepEqual(listed, { ...a.order, status: 'Cancelled' })
+    })
+
+    it('re-cancel: an already cancelled order is a 409 and nothing changes', async () => {
+      const before = orderRow(a.order.id)
+      await expectRefused(
+        await cancel(a.seeded.parent.cookie, a.order.id),
+        409,
+        'order_not_cancellable',
+        'This order is already cancelled.',
+      )
+      assert.deepEqual(orderRow(a.order.id), before)
+    })
+
+    it('race lost: the shop confirmed first, so the cancel is a 409 and the order stays confirmed', async () => {
+      const { seeded, order } = await placeOne('race')
+      writeDb((db) => db.prepare("UPDATE orders SET status = 'Order Confirmed' WHERE id = ?").run(order.id))
+      await expectRefused(await cancel(seeded.parent.cookie, order.id), 409, 'order_not_cancellable', CONFIRMED_MESSAGE)
+      assert.equal(orderRow(order.id).status, 'Order Confirmed')
+      assert.equal(orderRow(order.id).cancelled_by, null)
+
+      // Every later non-terminal status answers the same way; Delivered has its own copy.
+      for (const status of ['Processing', 'Packing The Order', 'Ready To Deliver', 'On Delivery Partner']) {
+        writeDb((db) => db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, order.id))
+        await expectRefused(await cancel(seeded.parent.cookie, order.id), 409, 'order_not_cancellable', CONFIRMED_MESSAGE)
+        assert.equal(orderRow(order.id).status, status)
+      }
+      writeDb((db) => db.prepare("UPDATE orders SET status = 'Delivered' WHERE id = ?").run(order.id))
+      await expectRefused(
+        await cancel(seeded.parent.cookie, order.id),
+        409,
+        'order_not_cancellable',
+        'This order has already been delivered.',
+      )
+      assert.equal(orderRow(order.id).status, 'Delivered')
+    })
+
+    it('double cancel: two concurrent cancels commit once; the second is told it is already cancelled', async () => {
+      const { seeded, order } = await placeOne('double')
+      const [first, second] = await Promise.all([
+        cancel(seeded.parent.cookie, order.id),
+        cancel(seeded.parent.cookie, order.id),
+      ])
+      assert.deepEqual([first.status, second.status].sort(), [200, 409])
+      const loser = first.status === 409 ? first : second
+      assert.equal(((await loser.json()) as ErrorBody).error.message, 'This order is already cancelled.')
+      assert.equal(orderRow(order.id).status, 'Cancelled')
+    })
+
+    it('admin reason: a shop cancel with a reason comes back as cancellation.by admin', async () => {
+      const { seeded, order } = await placeOne('admin-reason')
+      const at = new Date().toISOString()
+      writeDb((db) =>
+        db
+          .prepare(
+            `UPDATE orders SET status = 'Cancelled', cancelled_by = 'admin',
+               cancellation_reason = 'Out of stock for this term', cancelled_at = ? WHERE id = ?`,
+          )
+          .run(at, order.id),
+      )
+      const detail = await detailOf(seeded.parent.cookie, order.id)
+      assert.equal(detail.status, 'Cancelled')
+      assert.deepEqual(detail.cancellation, { by: 'admin', reason: 'Out of stock for this term', at })
+      assert.equal(detail.payableTotal, null)
+    })
+
+    it('delivery set: Processing with delivery 400 shows the delivery price and the payable total', async () => {
+      const { seeded, order } = await placeOne('delivery')
+      writeDb((db) =>
+        db
+          .prepare(
+            `UPDATE orders SET status = 'Processing', delivery_price_rupees = 400,
+               payable_total_rupees = goods_total_rupees + 400 WHERE id = ?`,
+          )
+          .run(order.id),
+      )
+      const detail = await detailOf(seeded.parent.cookie, order.id)
+      assert.equal(detail.status, 'Processing')
+      assert.equal(detail.deliveryPrice, 400)
+      assert.equal(detail.payableTotal, 4160 + 400)
+      assert.equal(detail.cancellation, null)
+      const listed = (await listOrders(seeded.parent.cookie)).find((entry) => entry.id === order.id)
+      assert.deepEqual(listed, { ...order, status: 'Processing' })
+    })
+
+    it('invariant: the trigger rejects a Cancelled order that carries a payable total', async () => {
+      const { seeded: invariantSeed, order } = await placeOne('invariant')
+      writeDb((db) => {
+        // INSERT is guarded as well as UPDATE.
+        const insert = db.prepare(
+          `INSERT INTO orders (
+             parent_id, public_number, idempotency_key, status, parent_name, delivery_address,
+             whatsapp, goods_total_rupees, placed_at, payable_total_rupees
+           ) VALUES (?, ?, ?, 'Cancelled', 'Direct', '1 Lake Road', '+94771234567', 100, ?, ?)`,
+        )
+        const publicNumber =
+          (db.prepare('SELECT MAX(public_number) AS n FROM orders').get() as { n: number }).n + 500
+        const placedAt = new Date().toISOString()
+        assert.throws(
+          () => insert.run(invariantSeed.parent.id, publicNumber, 'direct-insert', placedAt, 100),
+          /payable total/,
+        )
+        // The same row without a payable total is allowed; remove it again so nothing else sees it.
+        const allowed = insert.run(invariantSeed.parent.id, publicNumber, 'direct-insert', placedAt, null)
+        db.prepare('DELETE FROM orders WHERE id = ?').run(allowed.lastInsertRowid)
+
+        assert.throws(
+          () =>
+            db
+              .prepare("UPDATE orders SET status = 'Cancelled', payable_total_rupees = 100 WHERE id = ?")
+              .run(order.id),
+          /payable total/,
+        )
+        db.prepare("UPDATE orders SET status = 'Cancelled', cancelled_by = 'admin' WHERE id = ?").run(order.id)
+        assert.throws(
+          () => db.prepare('UPDATE orders SET payable_total_rupees = 100 WHERE id = ?').run(order.id),
+          /payable total/,
+        )
+        // The column checks hold too.
+        assert.throws(
+          () => db.prepare("UPDATE orders SET cancelled_by = 'shop' WHERE id = ?").run(order.id),
+          /CHECK/,
+        )
+        assert.throws(
+          () => db.prepare('UPDATE orders SET delivery_price_rupees = -1 WHERE id = ?').run(order.id),
+          /CHECK/,
+        )
+      })
+      const row = orderRow(order.id)
+      assert.equal(row.status, 'Cancelled')
+      assert.equal(row.payable_total_rupees, null)
+    })
+
+    it('pill: eight statuses render eight distinct step numbers and glyphs; Cancelled shows × and a strike', async () => {
+      // The test loader compiles JSX with the classic runtime, so React must be in scope first.
+      ;(globalThis as { React?: unknown }).React = React
+      const { ORDER_STATUSES, PIPELINE_STAGES, StatusPill } = await import('../../client/ui/StatusPill.tsx')
+      const marks = ORDER_STATUSES.map((status) => renderToStaticMarkup(React.createElement(StatusPill, { status })))
+      const steps = marks.map((markup) => markup.match(/class="status-pill-step"[^>]*>([^<]+)</)?.[1])
+      assert.deepEqual(steps, ['1', '2', '3', '4', '5', '6', '7', '×'])
+      const glyphs = marks.map((markup) => markup.match(/<svg[\s\S]*?<\/svg>/)?.[0])
+      assert.equal(new Set(glyphs).size, 8)
+      for (const [index, status] of ORDER_STATUSES.entries()) {
+        assert.match(marks[index], new RegExp(`class="status-pill-label">${status}<`))
+      }
+      assert.match(marks[7], /status-pill-cancelled/)
+      assert.equal(renderToStaticMarkup(React.createElement(StatusPill, { status: 'Lost in post' })), '<span class="status-pill-plain">Lost in post</span>')
+      assert.deepEqual([...PIPELINE_STAGES], ORDER_STATUSES.slice(0, 7))
+
+      const baseCss = await readFile(baseCssPath, 'utf8')
+      const tokens = await readFile(tokensPath, 'utf8')
+      assert.match(cssRule(baseCss, '.status-pill-cancelled .status-pill-label'), /line-through/)
+      assert.match(cssRule(baseCss, '.status-pill-placed'), /border-style: dashed/)
+      assert.match(cssRule(baseCss, '.status-pill-placed'), /var\(--color-status-placed-fill\)/)
+      for (const slug of ['ready', 'delivered', 'cancelled']) {
+        assert.match(cssRule(baseCss, `.status-pill-${slug}`), /border-width: var\(--space-edge-strong\)/)
+      }
+      for (const slug of ['delivered', 'cancelled']) {
+        assert.match(cssRule(baseCss, `.status-pill-${slug}`), /border-radius: var\(--radius-xs\)/)
+      }
+      assert.match(cssRule(baseCss, '.status-pill'), /border-radius: var\(--radius-full\)/)
+      // Ready is the only mustard pill.
+      assert.equal(cssCustomProperty(tokens, 'color-status-ready-fill', 'root'), '#E8A61A')
+      assert.equal(cssCustomProperty(tokens, 'color-status-placed-fill', 'root'), '#4A4A4E')
+      const slugs = ['placed', 'confirmed', 'processing', 'packing', 'ready', 'partner', 'delivered', 'cancelled']
+      for (const slug of slugs) {
+        for (const part of ['fill', 'ink', 'edge']) {
+          const name = `color-status-${slug}-${part}`
+          const dark = cssCustomProperty(tokens, `${name}-dark`, 'root')
+          assert.match(cssCustomProperty(tokens, name, 'root'), /^#[0-9A-F]{6}$/)
+          assert.equal(cssCustomProperty(tokens, name, 'dark'), dark, `${name} must remap to its -dark twin`)
+        }
+        if (slug !== 'ready') {
+          assert.notEqual(cssCustomProperty(tokens, `color-status-${slug}-fill`, 'root'), '#E8A61A')
+        }
+      }
+    })
+
+    it('fallbacks: delivery without a stored payable, Cancelled without a party, a parent cancel with a reason', async () => {
+      const delivery = await placeOne('fallback-delivery')
+      writeDb((db) =>
+        db
+          .prepare("UPDATE orders SET status = 'Processing', delivery_price_rupees = 400 WHERE id = ?")
+          .run(delivery.order.id),
+      )
+      assert.equal(orderRow(delivery.order.id).payable_total_rupees, null)
+      const processing = await detailOf(delivery.seeded.parent.cookie, delivery.order.id)
+      assert.equal(processing.deliveryPrice, 400)
+      assert.equal(processing.payableTotal, 4160 + 400)
+
+      const noParty = await placeOne('fallback-no-party')
+      writeDb((db) =>
+        db
+          .prepare("UPDATE orders SET status = 'Cancelled', cancellation_reason = 'Shop closed' WHERE id = ?")
+          .run(noParty.order.id),
+      )
+      assert.equal(orderRow(noParty.order.id).cancelled_by, null)
+      assert.deepEqual((await detailOf(noParty.seeded.parent.cookie, noParty.order.id)).cancellation, {
+        by: 'admin',
+        reason: 'Shop closed',
+        at: null,
+      })
+
+      const parentReason = await placeOne('fallback-parent-reason')
+      const at = new Date().toISOString()
+      writeDb((db) =>
+        db
+          .prepare(
+            `UPDATE orders SET status = 'Cancelled', cancelled_by = 'parent', cancelled_at = ?,
+               cancellation_reason = 'Stray text' WHERE id = ?`,
+          )
+          .run(at, parentReason.order.id),
+      )
+      assert.deepEqual(
+        (await detailOf(parentReason.seeded.parent.cookie, parentReason.order.id)).cancellation,
+        { by: 'parent', reason: null, at },
+      )
+    })
+
+    it('parse: real detail and cancel answers parse; malformed lines and cancellations do not', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { parseOrderDetail } = await import('../../client/storefront/src/OrderDetail.tsx')
+      assert.ok(detailAnswer, 'the detail case ran first')
+      assert.ok(cancelAnswer, 'the cancel case ran first')
+      assert.deepEqual(parseOrderDetail(detailAnswer), (detailAnswer as { order: unknown }).order)
+      assert.deepEqual(parseOrderDetail(cancelAnswer), (cancelAnswer as { order: unknown }).order)
+
+      const good = (detailAnswer as { order: DetailJson }).order
+      const variants: unknown[] = [
+        { order: { ...good, packLines: [{ ...good.packLines[0], books: undefined }] } },
+        { order: { ...good, packLines: [{ ...good.packLines[0], lineTotal: '3800' }] } },
+        { order: { ...good, packLines: [{ ...good.packLines[0], books: [{ title: 'Atlas', unitPrice: 1500 }] }] } },
+        { order: { ...good, itemLines: [{ ...good.itemLines[0], title: 7 }] } },
+        { order: { ...good, itemLines: [null] } },
+        { order: { ...good, cancellation: { by: 'shop', reason: null, at: null } } },
+        { order: { ...good, cancellation: { by: 'admin', reason: 5, at: null } } },
+        { order: { ...good, cancellation: { by: 'admin', reason: null, at: 5 } } },
+        { order: { ...good, cancellation: undefined } },
+        { order: [] },
+        null,
+      ]
+      for (const body of variants) assert.equal(parseOrderDetail(body), undefined, JSON.stringify(body))
+    })
+
+    it('detail render: notice, Cancel, timeline, delivery rows, and every cancellation copy', async () => {
+      ;(globalThis as { React?: unknown }).React = React
+      const { OrderDetail } = await import('../../client/storefront/src/OrderDetail.tsx')
+      const base: DetailJson = {
+        id: 1,
+        publicNumber: 1042,
+        status: 'Order Is Placed',
+        placedAt: '2026-10-01T10:00:00.000Z',
+        goodsTotal: 4160,
+        deliveryPrice: null,
+        payableTotal: null,
+        note: null,
+        deliveryAddress: '12 Temple Road, Nugegoda',
+        cancellation: null,
+        packLines: [
+          {
+            packName: 'Grade 5 pack',
+            label: 'Pack 1 of Grade 5',
+            gradeName: 'Grade 5',
+            lineTotal: 3800,
+            books: [
+              { title: 'Atlas', unitPrice: 1500, quantity: 2 },
+              { title: 'Reader', unitPrice: 800, quantity: 1 },
+            ],
+          },
+        ],
+        itemLines: [{ title: 'Pencil', unitPrice: 120, quantity: 3, lineTotal: 360 }],
+      }
+      const render = (detail: Partial<DetailJson>) =>
+        renderToStaticMarkup(
+          React.createElement(OrderDetail, {
+            id: 'order-detail-1',
+            detail: { ...base, ...detail },
+            loadError: '',
+            busy: false,
+            onCancel: () => {},
+          }),
+        )
+      const count = (markup: string, pattern: RegExp) => (markup.match(pattern) ?? []).length
+      const NOTICE = 'Delivery charge: to be confirmed by the shop'
+      const CANCEL_BUTTON = />Cancel order<\/button>/
+      const current = (stage: string) =>
+        new RegExp(`<li class="order-timeline-step is-current" aria-current="step">(?:(?!</li>).)*>${stage}</span></li>`)
+
+      const placed = render({})
+      assert.ok(placed.includes(NOTICE))
+      assert.match(placed, CANCEL_BUTTON)
+      assert.match(placed, current('Order Is Placed'))
+      assert.equal(count(placed, /aria-current="step"/g), 1)
+      assert.equal(count(placed, /is-done/g), 0)
+      assert.equal(count(placed, /is-upcoming/g), 6)
+      assert.ok(placed.includes(formatRupees(4160)))
+      assert.ok(!placed.includes('Payable total'))
+      // Snapshot prices for each book and the item, then the goods total.
+      assert.ok(placed.includes(formatRupees(1500)) && placed.includes(formatRupees(800)))
+      assert.ok(placed.indexOf(formatRupees(360)) < placed.indexOf('Goods total'))
+
+      const packing = render({ status: 'Packing The Order', deliveryPrice: 400, payableTotal: 4560 })
+      assert.equal(count(packing, /order-timeline-step is-done/g), 3)
+      assert.match(packing, current('Packing The Order'))
+      assert.equal(count(packing, /aria-current="step"/g), 1)
+      assert.equal(count(packing, /order-timeline-step is-upcoming/g), 3)
+      assert.doesNotMatch(packing, CANCEL_BUTTON)
+
+      const processing = render({ status: 'Processing', deliveryPrice: 400, payableTotal: 4560 })
+      assert.match(processing, />Delivery charge</)
+      assert.ok(processing.includes(formatRupees(400)))
+      assert.match(processing, />Payable total</)
+      assert.ok(processing.includes(formatRupees(4560)))
+      assert.ok(!processing.includes(NOTICE))
+      assert.match(processing, current('Processing'))
+      assert.doesNotMatch(processing, CANCEL_BUTTON)
+
+      const cancelledAt = '2026-10-01T11:00:00.000Z'
+      const byParent = render({ status: 'Cancelled', cancellation: { by: 'parent', reason: null, at: cancelledAt } })
+      assert.ok(byParent.includes('You cancelled this order.'))
+      assert.doesNotMatch(byParent, /order-timeline/)
+      assert.doesNotMatch(byParent, CANCEL_BUTTON)
+      assert.ok(!byParent.includes(NOTICE))
+      assert.match(byParent, /status-pill-cancelled/)
+
+      const withReason = render({
+        status: 'Cancelled',
+        cancellation: { by: 'admin', reason: 'Out of stock for this term', at: cancelledAt },
+      })
+      assert.match(withReason, /Reason: (?:<!-- -->)?Out of stock for this term/)
+      assert.ok(!withReason.includes('The shop cancelled this order.'))
+      assert.doesNotMatch(withReason, /order-timeline/)
+      assert.doesNotMatch(withReason, CANCEL_BUTTON)
+
+      for (const reason of [null, '', '   ']) {
+        const noReason = render({ status: 'Cancelled', cancellation: { by: 'admin', reason, at: cancelledAt } })
+        assert.ok(noReason.includes('The shop cancelled this order.'))
+        assert.doesNotMatch(noReason, /Reason:/)
+      }
+
+      // An unknown status falls back to the plain-text pill instead of an empty timeline.
+      const unknown = render({ status: 'Lost in post' })
+      assert.match(unknown, /<span class="status-pill-plain">Lost in post<\/span>/)
+      assert.doesNotMatch(unknown, /order-timeline/)
+    })
+
+    it('wires the migration, the routes, the pill, the detail, the modal, and polling', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const ordersHttp = await read(ordersDir, 'http.ts')
+      const ordersDetail = await read(ordersDir, 'detail.ts')
+      const runMigrationsSource = await read(serverRoot, 'db', 'migrations', 'run.ts')
+      const migration = await read(serverRoot, 'db', 'migrations', '010_orders_delivery_and_cancellation.sql')
+      const storefront = path.join(repoRoot, 'client', 'storefront', 'src')
+      const ordersPage = await read(storefront, 'OrdersPage.tsx')
+      const orderDetail = await read(storefront, 'OrderDetail.tsx')
+      const uiIndex = await read(repoRoot, 'client', 'ui', 'index.ts')
+      const statusPill = await read(repoRoot, 'client', 'ui', 'StatusPill.tsx')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Migration: five nullable columns and the Cancelled-without-payable trigger, after 009.
+      for (const column of [
+        /ADD COLUMN delivery_price_rupees INTEGER CHECK \(delivery_price_rupees >= 0\)/,
+        /ADD COLUMN payable_total_rupees INTEGER CHECK \(payable_total_rupees >= 0\)/,
+        /ADD COLUMN cancellation_reason TEXT/,
+        /ADD COLUMN cancelled_by TEXT CHECK \(cancelled_by IN \('parent', 'admin'\)\)/,
+        /ADD COLUMN cancelled_at TEXT/,
+      ]) {
+        assert.match(migration, column)
+      }
+      assert.match(migration, /BEFORE UPDATE ON orders/)
+      assert.match(migration, /BEFORE INSERT ON orders/)
+      assert.equal((migration.match(/NEW\.status = 'Cancelled' AND NEW\.payable_total_rupees IS NOT NULL/g) ?? []).length, 2)
+      assert.match(migration, /NEW\.status = 'Cancelled' AND NEW\.payable_total_rupees IS NOT NULL/)
+      assert.match(migration, /RAISE\(ABORT/)
+      assert.ok(
+        runMigrationsSource.indexOf('009_orders_orders_and_lines.sql') <
+          runMigrationsSource.indexOf('010_orders_delivery_and_cancellation.sql'),
+      )
+
+      // Server: SQL in detail.ts only; one immediate compare-and-set; no foreign tables.
+      assert.doesNotMatch(ordersHttp, /db\.prepare/)
+      for (const file of await walkFiles(ordersDir)) {
+        if (!file.endsWith('.ts')) continue
+        const source = await readFile(file, 'utf8')
+        assert.doesNotMatch(
+          source,
+          /(FROM|JOIN|INTO|UPDATE)\s+(cart_\w+|packs|books|grades|schools|items|pack_books|parents|admins|sessions)\b/i,
+          `foreign table in ${file}`,
+        )
+      }
+      assert.match(ordersDetail, /export function getParentOrder/)
+      assert.match(ordersDetail, /export function cancelParentOrder/)
+      assert.match(ordersDetail, /cancel\.immediate\(\)/)
+      assert.match(
+        ordersDetail,
+        /SET status = \?, cancelled_by = 'parent', cancelled_at = \?, payable_total_rupees = NULL\s*WHERE id = \? AND parent_id = \? AND status = \?/,
+      )
+      // 4.3 writes no delivery price or admin reason; only 4.5 and 4.6 do.
+      assert.doesNotMatch(ordersDetail, /(delivery_price_rupees|cancellation_reason)\s*=\s*(\?|NULL|\d|')/)
+      assert.match(ordersHttp, /'\/orders\/:id',\s*safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)/)
+      assert.match(ordersHttp, /'\/orders\/:id\/cancel',\s*safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)/)
+      assert.match(ordersHttp, /function parseId\(value: unknown\)/)
+      assert.match(ordersHttp, /Only parents can place orders\./)
+      assert.match(ordersHttp, /Only parents can view their orders\./)
+      assert.doesNotMatch(ordersHttp, /\/admin\//)
+
+      // The pill lives in the shared ui package, with the status list defined once.
+      assert.match(uiIndex, /StatusPill/)
+      assert.match(uiIndex, /PIPELINE_STAGES/)
+      assert.match(statusPill, /export const ORDER_STATUSES = \[/)
+      assert.doesNotMatch(ordersPage + orderDetail, /'Order Confirmed'|'Packing The Order'|'On Delivery Partner'/)
+
+      // Detail: disclosure rows, the vertical timeline, the reason copy, and the delivery notice.
+      assert.match(ordersPage, /<StatusPill status=\{order\.status\} \/>/)
+      assert.match(ordersPage, /aria-expanded=\{open\}/)
+      assert.match(ordersPage, /fetch\(`\/api\/orders\/\$\{orderId\}`/)
+      assert.match(ordersPage, /fetch\(`\/api\/orders\/\$\{target\.id\}\/cancel`/)
+      assert.match(orderDetail, /aria-current="step"/)
+      assert.match(orderDetail, /PIPELINE_STAGES\.map/)
+      assert.match(orderDetail, /Delivery charge: to be confirmed by the shop/)
+      assert.match(orderDetail, /detail\.deliveryPrice === null && !cancelled/)
+      assert.match(orderDetail, /Delivery charge</)
+      assert.match(orderDetail, /Payable total/)
+      assert.match(orderDetail, /Reason: \{cancellation\.reason\}/)
+      assert.match(orderDetail, /You cancelled this order\./)
+      assert.match(orderDetail, /detail\.status === ORDER_PLACED \? \(/)
+      assert.match(orderDetail, /className="notice notice-info"/)
+
+      // Modal: one level, a dialog with focus trapped and Escape to close.
+      assert.match(orderDetail, /role="dialog"/)
+      assert.match(orderDetail, /aria-modal="true"/)
+      assert.match(orderDetail, /event\.key === 'Escape'/)
+      assert.match(orderDetail, /event\.key !== 'Tab'/)
+      assert.match(orderDetail, /Cancel order #\{publicNumber\}\?/)
+      assert.match(orderDetail, /className="button-danger-solid"/)
+      assert.match(orderDetail, /Keep order/)
+      assert.equal((orderDetail.match(/role="dialog"/g) ?? []).length, 1)
+
+      // Cancel: the lock, 401 logs out, 409 resyncs before the message, the order stays listed.
+      assert.match(ordersPage, /const withLock = useCallback/)
+      assert.match(ordersPage, /void withLock\(async \(\) => \{\s*let response: Response/)
+      assert.match(ordersPage, /response\.status === 401\) \{\s*setModalTarget\(null\)\s*await logOut\.current\(\)/)
+      assert.doesNotMatch(ordersPage, /session\.logOut\(\)/)
+      // A lost cancel answer may still have committed, so the catch path resyncs too.
+      assert.match(
+        ordersPage,
+        /\} catch \{\s*setModalTarget\(null\)\s*\/\/[^\n]*\s*await loadOrders\(\)\s*if \(openIdRef\.current === target\.id\) await loadDetail\(target\.id\)\s*setActionError\(UNREACHABLE\)/,
+      )
+      // A silent poll never aborts a pending load nor runs before the first load settles.
+      assert.match(ordersPage, /if \(silent && \(!hasLoaded\.current \|\| loadController\.current !== null\)\) return 'aborted'/)
+      assert.ok(
+        ordersPage.indexOf("if (silent && (!hasLoaded.current") < ordersPage.indexOf('loadController.current?.abort()'),
+      )
+      // Busy modal buttons stay focusable, so the busy look hangs on aria-disabled.
+      const busyRule = baseCss.match(
+        /\.button-danger-solid\[aria-disabled='true'\],\s*\.button-secondary\[aria-disabled='true'\]\s*\{([^}]*)\}/,
+      )?.[1]
+      assert.ok(busyRule, 'missing the aria-disabled busy rule')
+      assert.match(busyRule, /cursor: wait/)
+      assert.match(busyRule, /opacity/)
+      // Shift+Tab from the dialog container wraps to the last button.
+      assert.match(orderDetail, /document\.activeElement === dialogRef\.current/)
+      assert.match(ordersPage, /await loadOrders\(\)\s*if \(openIdRef\.current === target\.id\) await loadDetail\(target\.id\)\s*setActionError\(message\)/)
+      assert.doesNotMatch(ordersPage, /navigate\('\//)
+
+      // Polling: 30s, visible only, silent, paused while the modal is open.
+      assert.match(ordersPage, /const POLL_MS = 30_000/)
+      assert.match(ordersPage, /document\.visibilityState !== 'visible'/)
+      assert.match(ordersPage, /if \(modalOpen\.current \|\| inFlight\.current\) return/)
+      assert.match(ordersPage, /void loadOrders\(true\)/)
+      assert.match(ordersPage, /if \(silent\) return 'failed'/)
+      assert.doesNotMatch(ordersPage + orderDetail, /WebSocket|EventSource|Notification/)
+
+      for (const source of [ordersPage, orderDetail, statusPill]) {
+        assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/)
+        assert.doesNotMatch(source, /horizontal|stepper/i)
+      }
+      assert.doesNotMatch(baseCss, /order-timeline[\w-]*\s*\{[^}]*flex-direction: row/)
+      assert.match(cssRule(baseCss, '.order-timeline'), /flex-direction: column/)
+
+      // Styles, all on tokens.
+      assert.match(cssRule(baseCss, '.notice-info'), /var\(--color-info-tint\)/)
+      assert.match(cssRule(baseCss, '.notice-info'), /var\(--color-info\)/)
+      assert.match(cssRule(baseCss, '.button-danger-solid'), /background: var\(--color-danger\)/)
+      assert.match(cssRule(baseCss, '.button-danger-solid'), /color: var\(--color-surface-base\)/)
+      const modal = cssRule(baseCss, '.modal')
+      assert.match(modal, /var\(--space-edge-strong\) solid var\(--color-border-strong\)/)
+      assert.match(modal, /var\(--radius-lg\)/)
+      assert.match(modal, /padding: var\(--space-5\)/)
+      assert.match(cssRule(baseCss, '.modal-backdrop'), /var\(--color-text-primary\) 55%/)
+      assert.match(cssRule(baseCss, ".modal-actions"), /justify-content: flex-end/)
+      for (const name of [
+        'order-row-toggle',
+        'order-row-meta-start',
+        'order-detail',
+        'order-timeline',
+        'order-timeline-step',
+        'order-timeline-marker',
+        'modal-backdrop',
+        'modal',
+        'modal-title',
+        'modal-actions',
+      ]) {
+        assert.match(ordersPage + orderDetail, new RegExp(`className="${name}[ "]`), `${name} is rendered`)
+        assert.ok(cssRule(baseCss, `.${name}`))
+      }
+      // Motion stays inside 120–200ms.
+      assert.match(cssRule(baseCss, '.order-row-chevron'), /transition: transform 160ms/)
+      assert.match(cssRule(baseCss, '.order-detail'), /animation: fade-in 160ms/)
+      assert.match(cssRule(baseCss, '.modal-backdrop'), /animation: fade-in 160ms/)
+      // Reduced motion also stops the chevron turning.
+      const reduced = baseCss.slice(baseCss.indexOf('@media (prefers-reduced-motion: reduce)'))
+      assert.match(reduced, /\.order-row-toggle\[aria-expanded='true'\] \.order-row-chevron \{\s*transform: none;/)
     })
   })
 })

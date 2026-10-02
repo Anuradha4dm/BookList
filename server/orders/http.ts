@@ -8,8 +8,10 @@ import {
 } from '../identity/index.js'
 import { enableForeignKeys } from '../identity/seed.js'
 import { listParentOrders, placeOrder, type OrderSummary } from './place.js'
+import { ORDER_NOT_FOUND_MESSAGE, cancelParentOrder, getParentOrder } from './detail.js'
 
 const PARENT_FORBIDDEN = 'Only parents can place orders.'
+const PARENT_VIEW_FORBIDDEN = 'Only parents can view their orders.'
 const NOTE_MAX_LENGTH = 1000
 const KEY_PATTERN = /^[\x20-\x7E]{1,100}$/
 
@@ -38,6 +40,7 @@ function requireParent(
   env: IdentityEnv,
   req: Request,
   res: Response,
+  forbiddenMessage: string,
 ): number | undefined {
   const lookup: SessionLookup = lookupSession(db, env, req)
   if (lookup.status !== 'ok') {
@@ -45,10 +48,17 @@ function requireParent(
     return undefined
   }
   if (lookup.account.role !== 'parent') {
-    sendError(res, 403, 'forbidden', PARENT_FORBIDDEN)
+    sendError(res, 403, 'forbidden', forbiddenMessage)
     return undefined
   }
   return lookup.account.id
+}
+
+function parseId(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return undefined
+  const id = Number(value)
+  if (!Number.isSafeInteger(id)) return undefined
+  return id
 }
 
 /** 1–100 printable ASCII characters, not only spaces; anything else is refused. */
@@ -91,7 +101,7 @@ export function createOrdersRouter(db: Database.Database, env: IdentityEnv): Rou
     '/orders',
     safe((req, res) => {
       res.setHeader('Cache-Control', 'no-store')
-      const parentId = requireParent(db, env, req, res)
+      const parentId = requireParent(db, env, req, res, PARENT_FORBIDDEN)
       if (parentId === undefined) return
 
       const key = parseIdempotencyKey(req.get('Idempotency-Key'))
@@ -127,9 +137,47 @@ export function createOrdersRouter(db: Database.Database, env: IdentityEnv): Rou
     '/orders',
     safe((req, res) => {
       res.setHeader('Cache-Control', 'no-store')
-      const parentId = requireParent(db, env, req, res)
+      const parentId = requireParent(db, env, req, res, PARENT_VIEW_FORBIDDEN)
       if (parentId === undefined) return
       res.status(200).json({ orders: listParentOrders(db, parentId).map(orderJson) })
+    }),
+  )
+
+  router.get(
+    '/orders/:id',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const parentId = requireParent(db, env, req, res, PARENT_VIEW_FORBIDDEN)
+      if (parentId === undefined) return
+      const orderId = parseId(req.params.id)
+      // Someone else's order and a malformed id answer the same 404, so ids leak nothing.
+      const order = orderId === undefined ? undefined : getParentOrder(db, parentId, orderId)
+      if (!order) {
+        sendError(res, 404, 'not_found', ORDER_NOT_FOUND_MESSAGE)
+        return
+      }
+      res.status(200).json({ order })
+    }),
+  )
+
+  router.post(
+    '/orders/:id/cancel',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      const parentId = requireParent(db, env, req, res, PARENT_VIEW_FORBIDDEN)
+      if (parentId === undefined) return
+      const orderId = parseId(req.params.id)
+      if (orderId === undefined) {
+        sendError(res, 404, 'not_found', ORDER_NOT_FOUND_MESSAGE)
+        return
+      }
+      // The cancel takes no body; anything sent is ignored.
+      const result = cancelParentOrder(db, parentId, orderId)
+      if (!result.ok) {
+        sendError(res, result.status, result.code, result.message)
+        return
+      }
+      res.status(200).json({ order: result.order })
     }),
   )
 
