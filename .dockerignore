@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+_bmad
+_bmad-output
+**/node_modules
+**/dist
+**/*.db
+**/*.db-wal
+**/*.db-shm
+data
+.env
+.env.*
+deploy
+docs
+Dockerfile
