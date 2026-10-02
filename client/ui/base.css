@@ -1729,6 +1729,234 @@ summary,
   width: auto;
 }
 
+/* Admin Orders: one list, Open and Past, grouped by status in pipeline order. */
+.admin-orders-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.admin-orders-heading .page-heading {
+  margin: 0;
+}
+
+.admin-orders-heading .button-secondary {
+  width: auto;
+}
+
+.admin-order-filter {
+  max-width: 280px;
+  margin-bottom: var(--space-5);
+}
+
+.admin-order-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-7);
+}
+
+.admin-order-section-title {
+  margin: 0;
+}
+
+.admin-order-section-empty {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.admin-order-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-order-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: var(--space-edge-strong) solid var(--color-border-strong);
+}
+
+.admin-order-group-title {
+  margin: 0;
+}
+
+.admin-order-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-primary);
+  color: var(--color-text-on-accent);
+  font-family: var(--font-sans);
+  font-size: var(--text-pill-label-size);
+  font-weight: var(--text-pill-label-weight);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-order-row {
+  display: grid;
+  grid-template-columns: 88px 1.5fr 1.1fr 152px auto;
+  grid-template-areas: 'id parent lines status call';
+  align-items: center;
+  gap: calc(var(--space-3) + var(--space-edge-hairline));
+  min-height: var(--space-touch-min);
+  padding: var(--space-3) calc(var(--space-3) + var(--space-edge-hairline));
+  background: var(--color-surface-raised);
+  border: var(--space-edge-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  transition: border-color 160ms ease-out;
+}
+
+.admin-order-row.is-attention {
+  border-color: var(--color-border-strong);
+  border-left-width: var(--space-2);
+  /* The thicker edge eats into the padding, so content starts where a normal row's does. */
+  padding-left: calc(var(--space-3) + var(--space-edge-hairline) * 2 - var(--space-2));
+}
+
+.admin-order-row p {
+  margin: 0;
+}
+
+.admin-order-id {
+  grid-area: id;
+  min-width: 0;
+}
+
+.admin-order-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-order-time,
+.admin-order-meta {
+  color: var(--color-text-secondary);
+}
+
+.admin-order-parent {
+  grid-area: parent;
+  min-width: 0;
+}
+
+.admin-order-lines {
+  grid-area: lines;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.admin-order-status {
+  grid-area: status;
+  min-width: 0;
+}
+
+.admin-order-call-cell {
+  grid-area: call;
+  min-width: 0;
+}
+
+.admin-order-call {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta-size);
+  font-weight: var(--text-meta-weight);
+  line-height: var(--text-meta-line);
+  white-space: nowrap;
+}
+
+.admin-order-call-never {
+  background: var(--color-surface-raised);
+  border: var(--space-edge-hairline) dashed var(--color-border-default);
+  color: var(--color-text-secondary);
+}
+
+.admin-order-call-attempted {
+  background: var(--color-warn-tint);
+  border: var(--space-edge-hairline) solid var(--color-warning);
+  color: var(--color-warning);
+}
+
+.admin-order-call-glyph {
+  flex: 0 0 auto;
+}
+
+.admin-order-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 420px;
+  padding: calc(var(--space-6) + var(--space-edge-hairline)) calc(var(--space-4) + var(--space-edge-hairline));
+  background: var(--color-surface-raised);
+  border: var(--space-edge-strong) solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--space-lift-offset) var(--space-lift-offset) 0 var(--color-border-strong);
+  text-align: center;
+}
+
+.admin-order-empty-mark {
+  color: var(--color-border-strong);
+}
+
+.admin-order-empty-title {
+  margin: 0;
+}
+
+@media (max-width: 899px) {
+  .admin-order-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'id status'
+      'parent call';
+    row-gap: var(--space-2);
+  }
+
+  .admin-order-id {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .admin-order-lines {
+    display: none;
+  }
+
+  .admin-order-filter {
+    max-width: none;
+  }
+
+  .admin-orders-heading .button-secondary,
+  .admin-order-filter .form-control {
+    min-height: var(--space-touch-min);
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

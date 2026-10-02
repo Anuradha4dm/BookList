@@ -3,6 +3,7 @@ import { AdminGate } from './AdminGate'
 import { BooksPage } from './BooksPage'
 import { GradesPage } from './GradesPage'
 import { ItemsPage } from './ItemsPage'
+import { OrdersPage } from './OrdersPage'
 import { PacksPage } from './PacksPage'
 import { ParentsPage } from './ParentsPage'
 import { SchoolsPage } from './SchoolsPage'
@@ -26,7 +27,7 @@ export const router = createBrowserRouter(
   createRoutesFromElements(
     <Route element={<AdminGate />}>
       <Route element={<Shell />}>
-        <Route index element={<Page title="Orders" />} />
+        <Route index element={<OrdersPage />} />
         <Route path="schools" element={<SchoolsPage />} />
         <Route path="grades" element={<GradesPage />} />
         <Route path="books" element={<BooksPage />} />
