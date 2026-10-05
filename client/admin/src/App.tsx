@@ -11,15 +11,6 @@ import { SchoolsPage } from './SchoolsPage'
 import { SettingsPage } from './SettingsPage'
 import { Shell } from './Shell'
 
-function Page({ title }: { title: string }) {
-  return (
-    <section>
-      <h1 className="page-heading text-heading-lg">{title}</h1>
-      <div className="page-region" />
-    </section>
-  )
-}
-
 function BlankPage() {
   return null
 }
@@ -37,7 +28,6 @@ export const router = createBrowserRouter(
         <Route path="items" element={<ItemsPage />} />
         <Route path="parents" element={<ParentsPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="export" element={<Page title="Export" />} />
       </Route>
       <Route path="*" element={<BlankPage />} />
     </Route>,

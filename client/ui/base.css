@@ -1053,6 +1053,20 @@ summary,
   border-top: var(--space-edge-hairline) solid var(--color-border-default-dark);
 }
 
+.admin-sidebar .admin-export-button[aria-busy='true'] {
+  justify-content: center;
+  cursor: progress;
+}
+
+.admin-sidebar .admin-export-button .spinner-disc.is-inline {
+  border-color: var(--color-border-default-dark);
+  border-top-color: var(--color-text-primary-dark);
+}
+
+.admin-export-error {
+  padding: 0 var(--space-3);
+}
+
 .admin-main {
   flex: 1 1 auto;
   min-width: 0;
@@ -1366,6 +1380,15 @@ summary,
   border-top-color: var(--color-text-primary);
   border-radius: var(--radius-full);
   animation: spinner-turn 700ms linear infinite;
+}
+
+/* Icon-sized spinner that sits inside a control in place of its label. */
+.spinner-disc.is-inline {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-width: var(--space-edge-hairline);
 }
 
 @keyframes spinner-turn {

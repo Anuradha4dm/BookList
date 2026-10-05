@@ -25,6 +25,9 @@ import {
   type TransitionResult,
 } from './admin.js'
 import { ORDER_NOT_FOUND_MESSAGE } from './detail.js'
+import { buildSeasonExport } from './export.js'
+
+const EXPORT_FAILED_MESSAGE = 'Exporting Job failed try again later'
 
 const ADMIN_ORDERS_FORBIDDEN =
   'Only the shop owner can see all orders. Sign in as the shop owner to continue.'
@@ -229,6 +232,28 @@ export function createAdminOrdersRouter(db: Database.Database, env: IdentityEnv)
         return
       }
       sendTransition(res, cancelAdminOrder(db, orderId, expectedStatus, reason))
+    }),
+  )
+
+  router.get(
+    '/admin/export',
+    safe((req, res) => {
+      res.setHeader('Cache-Control', 'no-store')
+      if (!requireAdmin(db, env, req, res, ADMIN_ORDERS_FORBIDDEN)) return
+      // The whole zip is built in memory first, so a failure never sends a partial body.
+      let built: { fileName: string; zip: Buffer }
+      try {
+        built = buildSeasonExport(db, new Date())
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : error)
+        sendError(res, 500, 'export_failed', EXPORT_FAILED_MESSAGE)
+        return
+      }
+      res
+        .status(200)
+        .type('application/zip')
+        .setHeader('Content-Disposition', `attachment; filename="${built.fileName}"`)
+        .end(built.zip)
     }),
   )
 

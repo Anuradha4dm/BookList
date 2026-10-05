@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHmac } from 'node:crypto'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { crc32, inflateRawSync } from 'node:zlib'
 import Database from 'better-sqlite3'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -94,6 +95,14 @@ import { checkoutBlock } from '../cart/index.ts'
 import { runMigrations } from '../db/migrations/run.ts'
 import { listParentOrders, placeOrder } from '../orders/place.ts'
 import { MOVE_TARGETS, REASON_MAX_LENGTH as SERVER_REASON_MAX_LENGTH } from '../orders/admin.ts'
+import { buildSeasonExport, toCsv } from '../orders/export.ts'
+import {
+  EXPORT_FAILED as CLIENT_EXPORT_FAILED,
+  EXPORT_FALLBACK_NAME,
+  attachmentName,
+  exportErrorFor,
+  exportSeason,
+} from '../../client/admin/src/exportSeason.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const serverRoot = path.join(repoRoot, 'server')
@@ -218,6 +227,8 @@ const ADMIN_DETAIL_PORT = String(18786)
 const adminDetailBaseUrl = `http://127.0.0.1:${ADMIN_DETAIL_PORT}`
 const ADMIN_CLOSE_PORT = String(18787)
 const adminCloseBaseUrl = `http://127.0.0.1:${ADMIN_CLOSE_PORT}`
+const EXPORT_PORT = String(18788)
+const exportBaseUrl = `http://127.0.0.1:${EXPORT_PORT}`
 const UPGRADE_PORT = String(18770)
 
 type Spawned = {
@@ -2187,13 +2198,16 @@ describe('I/O & edge-case matrix', () => {
       assert.match(adminApp, /path="parents" element=\{<ParentsPage \/>\}/)
       assert.match(adminApp, /path="schools" element=\{<SchoolsPage \/>\}/)
       assert.match(adminApp, /path="grades" element=\{<GradesPage \/>\}/)
-      assert.match(adminApp, /path="export" element=\{<Page title="Export" \/>\}/)
+      // Export is an action in the sidebar (4.7), not a page: the placeholder route is gone.
+      assert.doesNotMatch(adminApp, /path="export"/)
 
       assert.match(shell, /label: 'Parents'/)
       assert.match(shell, /label: 'Settings'/)
       assert.match(shell, /label: 'Book master'/)
       assert.match(shell, /className="admin-sidebar-export"/)
-      assert.match(shell, /to="\/export"/)
+      assert.doesNotMatch(shell, /to="\/export"/)
+      assert.match(shell, /<div className="admin-sidebar-export">\s*<button\s+type="button"\s+className="nav-item/)
+      assert.match(shell, /await exportSeason\(/)
 
       assert.match(settingsPage, /label[\s\S]*New password/)
       assert.match(settingsPage, /id="admin-settings-password"/)
@@ -12254,6 +12268,709 @@ describe('I/O & edge-case matrix', () => {
       }
       assert.match(cssRule(baseCss, '.admin-order-detail-modal'), /animation: none/)
       assert.match(cssRule(baseCss, '.admin-order-detail-status-final'), /flex-wrap: wrap/)
+    })
+  })
+
+  describe('Export the season', { concurrency: 1 }, () => {
+    let child: ReturnType<typeof spawn>
+    let dbDir: string
+    let dbPath: string
+    let adminCookie: string
+    let parent: Parent
+    let parentSerial = 0
+
+    type Parent = { cookie: string; id: number }
+    type ZipRead = { name: string; method: number; flags: number; data: Buffer }
+
+    const FORBIDDEN = 'Only the shop owner can see all orders. Sign in as the shop owner to continue.'
+    const EXPORT_FAILED = 'Exporting Job failed try again later'
+    const ENTRY_NAMES = [
+      'orders.csv',
+      'order-lines.csv',
+      'schools.csv',
+      'grades.csv',
+      'books.csv',
+      'items.csv',
+      'packs.csv',
+      'booklist.db',
+    ]
+    const ORDERS_HEADER = [
+      'Order',
+      'Placed',
+      'Status',
+      'Parent',
+      'WhatsApp',
+      'Second phone',
+      'Address',
+      'Note',
+      'Goods total',
+      'Delivery charge',
+      'Payable total',
+      'Call attempted',
+      'Cancelled by',
+      'Cancellation reason',
+      'Cancelled at',
+    ]
+    const LINES_HEADER = ['Order', 'Line', 'Kind', 'Pack', 'Grade', 'Label', 'Title', 'Unit price', 'Quantity', 'Line total']
+    const COLOMBO_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/
+
+    async function signInAdmin(): Promise<string> {
+      const response = await fetch(`${exportBaseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', password: 'test-password' }),
+      })
+      assert.equal(response.status, 200)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      return cookieHeader(cookie)
+    }
+
+    async function adminSend(pathName: string, body: unknown, method = 'POST', expected = 201): Promise<{ id: number }> {
+      const response = await fetch(`${exportBaseUrl}${pathName}`, {
+        method,
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: JSON.stringify(body),
+      })
+      assert.equal(response.status, expected, `${method} ${pathName}: ${response.status}`)
+      return (await response.json()) as { id: number }
+    }
+
+    async function registerParent(tag: string): Promise<Parent> {
+      parentSerial += 1
+      const email = `export.${tag}.${parentSerial}.${Date.now()}@example.com`
+      const response = await fetch(`${exportBaseUrl}/api/parents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: `Export ${tag} සුනිල්`,
+          deliveryAddress: `${parentSerial} Lake Road, Maharagama`,
+          whatsapp: `0773333${String(100 + parentSerial).slice(-3)}`,
+          secondPhone: `071 4444 ${String(100 + parentSerial).slice(-3)}`,
+          email,
+          password: 'evening-order',
+        }),
+      })
+      assert.equal(response.status, 201)
+      const cookie = sidCookie(response.headers)
+      assert.ok(cookie)
+      const stored = readDb(
+        (db) => db.prepare('SELECT id FROM parents WHERE email = ?').get(email) as { id: number },
+      )
+      return { cookie: cookieHeader(cookie), id: stored.id }
+    }
+
+    /** The 16-bit DOS time and date fields decoded as `YYYY-MM-DD HH:mm:ss`. */
+    function dosStamp(time: number, date: number): string {
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${1980 + (date >> 9)}-${pad((date >> 5) & 0xf)}-${pad(date & 0x1f)} ${pad(time >> 11)}:${pad((time >> 5) & 0x3f)}:${pad((time & 0x1f) * 2)}`
+    }
+
+    /** Every DOS stamp in the zip: each central header and the local header it points to. */
+    function zipStamps(zip: Buffer): string[] {
+      const end = zip.length - 22
+      const count = zip.readUInt16LE(end + 10)
+      let at = zip.readUInt32LE(end + 16)
+      const stamps: string[] = []
+      for (let i = 0; i < count; i += 1) {
+        stamps.push(dosStamp(zip.readUInt16LE(at + 12), zip.readUInt16LE(at + 14)))
+        const localAt = zip.readUInt32LE(at + 42)
+        stamps.push(dosStamp(zip.readUInt16LE(localAt + 10), zip.readUInt16LE(localAt + 12)))
+        at += 46 + zip.readUInt16LE(at + 28) + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32)
+      }
+      return stamps
+    }
+
+    /** One pack (one book, Rs. 1,500) plus one item (Rs. 180), then Place with `note`. */
+    async function placeOne(
+      tag: string,
+      note?: string,
+    ): Promise<{ id: number; publicNumber: number; bookId: number; bookTitle: string; packName: string }> {
+      const s = `${Date.now()}-${tag}-${Math.random().toString(36).slice(2, 8)}`
+      const schoolId = (await adminSend('/api/admin/schools', catalogNameBody(`Export school ${s}`))).id
+      const gradeId = (await adminSend('/api/admin/grades', catalogNameBody(`Grade ${s}`))).id
+      const bookTitle = `Atlas ${s}`
+      const book = await adminSend('/api/admin/books', bookBody(bookTitle, 1500))
+      const packName = `Export pack ${s}`
+      const pack = await adminSend('/api/admin/packs', packCreateBody(packName, schoolId, gradeId, 'Export', [book.id]))
+      const item = await adminSend('/api/admin/items', itemBody(`Pencil ${s}`, 'Stationery', 180))
+      const packResponse = await fetch(`${exportBaseUrl}/api/cart/packs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ packId: pack.id, selection: `${book.id}:1` }),
+      })
+      assert.equal(packResponse.status, 201)
+      const itemResponse = await fetch(`${exportBaseUrl}/api/cart/items`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie },
+        body: JSON.stringify({ itemId: item.id, quantity: 1 }),
+      })
+      assert.ok(itemResponse.status === 201 || itemResponse.status === 200, `add item ${itemResponse.status}`)
+      const response = await fetch(`${exportBaseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: parent.cookie, 'Idempotency-Key': `export-${s}` },
+        body: JSON.stringify(note === undefined ? {} : { note }),
+      })
+      assert.equal(response.status, 201)
+      const order = ((await response.json()) as { order: { id: number; publicNumber: number } }).order
+      return { ...order, bookId: book.id, bookTitle, packName }
+    }
+
+    function post(cookie: string | undefined, pathName: string, body: unknown): Promise<Response> {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (cookie) headers.cookie = cookie
+      return fetch(`${exportBaseUrl}${pathName}`, {
+        method: 'POST',
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+    }
+
+    function exportAs(cookie: string | undefined): Promise<Response> {
+      return fetch(`${exportBaseUrl}/api/admin/export`, { headers: cookie ? { cookie } : {} })
+    }
+
+    function readDb<T>(read: (db: Database.Database) => T): T {
+      const db = new Database(dbPath, { readonly: true })
+      try {
+        return read(db)
+      } finally {
+        db.close()
+      }
+    }
+
+    /** A small reader of our own: end record, central directory, local headers, inflate, CRC. */
+    function unzip(zip: Buffer): ZipRead[] {
+      const end = zip.length - 22
+      assert.equal(zip.readUInt32LE(end), 0x06054b50, 'end of central directory record')
+      const count = zip.readUInt16LE(end + 10)
+      const directorySize = zip.readUInt32LE(end + 12)
+      let at = zip.readUInt32LE(end + 16)
+      assert.equal(at + directorySize, end, 'central directory sits right before the end record')
+      const entries: ZipRead[] = []
+      for (let i = 0; i < count; i += 1) {
+        assert.equal(zip.readUInt32LE(at), 0x02014b50, 'central header')
+        const flags = zip.readUInt16LE(at + 8)
+        const method = zip.readUInt16LE(at + 10)
+        const crc = zip.readUInt32LE(at + 16)
+        const compressedSize = zip.readUInt32LE(at + 20)
+        const size = zip.readUInt32LE(at + 24)
+        const nameLength = zip.readUInt16LE(at + 28)
+        const extraLength = zip.readUInt16LE(at + 30)
+        const commentLength = zip.readUInt16LE(at + 32)
+        const localAt = zip.readUInt32LE(at + 42)
+        const name = zip.subarray(at + 46, at + 46 + nameLength).toString('utf8')
+        assert.equal(zip.readUInt32LE(localAt), 0x04034b50, `local header of ${name}`)
+        const localName = zip.readUInt16LE(localAt + 26)
+        const localExtra = zip.readUInt16LE(localAt + 28)
+        const start = localAt + 30 + localName + localExtra
+        const raw = zip.subarray(start, start + compressedSize)
+        const data = method === 8 ? inflateRawSync(raw) : Buffer.from(raw)
+        assert.equal(data.length, size, `size of ${name}`)
+        assert.equal(crc32(data) >>> 0, crc, `crc of ${name}`)
+        entries.push({ name, method, flags, data })
+        at += 46 + nameLength + extraLength + commentLength
+      }
+      return entries
+    }
+
+    /** RFC 4180: quoted cells may hold commas, doubled quotes, CR and LF. Expects BOM + CRLF. */
+    function parseCsv(data: Buffer): string[][] {
+      const text = data.toString('utf8')
+      assert.ok(text.startsWith('\uFEFF'), 'UTF-8 BOM')
+      assert.ok(text.endsWith('\r\n'), 'ends with CRLF')
+      const rows: string[][] = []
+      let row: string[] = []
+      let cell = ''
+      let quoted = false
+      for (let i = 1; i < text.length; i += 1) {
+        const c = text[i]
+        if (quoted) {
+          if (c === '"' && text[i + 1] === '"') {
+            cell += '"'
+            i += 1
+          } else if (c === '"') {
+            quoted = false
+          } else {
+            cell += c
+          }
+        } else if (c === '"') {
+          assert.equal(cell, '', 'a quote only opens a cell')
+          quoted = true
+        } else if (c === ',') {
+          row.push(cell)
+          cell = ''
+        } else if (c === '\r') {
+          assert.equal(text[i + 1], '\n', 'bare CR outside quotes')
+          row.push(cell)
+          rows.push(row)
+          row = []
+          cell = ''
+          i += 1
+        } else {
+          assert.notEqual(c, '\n', 'bare LF outside quotes')
+          cell += c
+        }
+      }
+      assert.equal(quoted, false)
+      return rows
+    }
+
+    async function exportZip(cookie = adminCookie): Promise<{ disposition: string; entries: ZipRead[] }> {
+      const response = await exportAs(cookie)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      assert.equal(response.headers.get('content-type'), 'application/zip')
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const entries = unzip(Buffer.from(await response.arrayBuffer()))
+      assert.deepEqual(entries.map((entry) => entry.name), ENTRY_NAMES)
+      for (const entry of entries) {
+        assert.equal(entry.method, 8, `${entry.name} is deflated`)
+        assert.equal(entry.flags & 0x0800, 0x0800, `${entry.name} has the UTF-8 flag`)
+      }
+      return { disposition, entries }
+    }
+
+    function csvOf(entries: ZipRead[], name: string): string[][] {
+      const entry = entries.find((candidate) => candidate.name === name)
+      assert.ok(entry, `missing ${name}`)
+      return parseCsv(entry.data)
+    }
+
+    async function withDbCopy<T>(entries: ZipRead[], read: (db: Database.Database) => T): Promise<T> {
+      const entry = entries.find((candidate) => candidate.name === 'booklist.db')
+      assert.ok(entry)
+      const copyDir = await mkdtemp(path.join(tmpdir(), 'booklist-export-copy-'))
+      const copyPath = path.join(copyDir, 'booklist.db')
+      await writeFile(copyPath, entry.data)
+      try {
+        const db = new Database(copyPath, { readonly: true })
+        try {
+          return read(db)
+        } finally {
+          db.close()
+        }
+      } finally {
+        await rm(copyDir, { recursive: true, force: true })
+      }
+    }
+
+    function colomboName(at: number): string {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Colombo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(at)
+      const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? ''
+      return `booklist-export-${part('year')}-${part('month')}-${part('day')}-${part('hour')}${part('minute')}.zip`
+    }
+
+    before(async () => {
+      dbDir = await mkdtemp(path.join(tmpdir(), 'booklist-export-'))
+      dbPath = path.join(dbDir, 'booklist.db')
+      const started = await startIdentityServer(dbPath, EXPORT_PORT)
+      child = started.child
+      adminCookie = await signInAdmin()
+      parent = await registerParent('main')
+    })
+
+    after(async () => {
+      await stopChild(child)
+      await rm(dbDir, { recursive: true, force: true })
+    })
+
+    it('empty season: a zip of 8 entries in order, and the order CSVs are header-only', async () => {
+      const startedAt = Date.now()
+      const { disposition, entries } = await exportZip()
+      const names = new Set([colomboName(startedAt), colomboName(Date.now())])
+      const match = disposition.match(/^attachment; filename="(booklist-export-\d{4}-\d{2}-\d{2}-\d{4}\.zip)"$/)
+      assert.ok(match, disposition)
+      assert.ok(names.has(match[1]), `${match[1]} is not Asia/Colombo now`)
+      assert.deepEqual(csvOf(entries, 'orders.csv'), [ORDERS_HEADER])
+      assert.deepEqual(csvOf(entries, 'order-lines.csv'), [LINES_HEADER])
+      assert.deepEqual(csvOf(entries, 'schools.csv')[0], ['ID', 'Name', 'Archived'])
+      assert.deepEqual(csvOf(entries, 'grades.csv')[0], ['ID', 'Name', 'Archived'])
+      assert.deepEqual(csvOf(entries, 'books.csv')[0], ['ID', 'Title', 'Price', 'Archived'])
+      assert.deepEqual(csvOf(entries, 'items.csv')[0], ['ID', 'Title', 'Description', 'Price', 'Archived'])
+      assert.deepEqual(csvOf(entries, 'packs.csv')[0], ['ID', 'Name', 'School', 'Grade', 'Description', 'Price', 'Archived', 'Books'])
+      const count = await withDbCopy(entries, (db) => (db.prepare('SELECT COUNT(*) AS n FROM orders').get() as { n: number }).n)
+      assert.equal(count, 0)
+    })
+
+    it('auth: 401 without a cookie and 403 for a parent, with no zip', async () => {
+      const anonymous = await exportAs(undefined)
+      assert.equal(anonymous.status, 401)
+      assert.equal(anonymous.headers.get('cache-control'), 'no-store')
+      assert.notEqual(anonymous.headers.get('content-type'), 'application/zip')
+      assert.equal(((await anonymous.json()) as { error: { code: string } }).error.code, 'unauthenticated')
+      const asParent = await exportAs(parent.cookie)
+      assert.equal(asParent.status, 403)
+      assert.equal(asParent.headers.get('cache-control'), 'no-store')
+      assert.equal(asParent.headers.get('content-disposition'), null)
+      assert.deepEqual(await asParent.json(), { error: { code: 'forbidden', message: FORBIDDEN } })
+    })
+
+    it('export: confirmed and cancelled orders, a hostile note, snapshots, archived catalog and a restorable db', async () => {
+      const confirmed = await placeOne('confirmed')
+      assert.equal((await post(adminCookie, `/api/admin/orders/${confirmed.id}/call-attempted`, undefined)).status, 200)
+      const okConfirm = await post(adminCookie, `/api/admin/orders/${confirmed.id}/confirm`, { deliveryPrice: 350 })
+      assert.equal(okConfirm.status, 200)
+      const hostileNote = '=HYPERLINK("x"), ring twice\nපසුපස දොර · பின் கதவு'
+      const cancelled = await placeOne('cancelled', hostileNote)
+      const reason = 'Out of stock, sorry — "Atlas" is late'
+      const okCancel = await post(adminCookie, `/api/admin/orders/${cancelled.id}/cancel`, {
+        expectedStatus: 'Order Is Placed',
+        reason,
+      })
+      assert.equal(okCancel.status, 200)
+      // `+` that is not phone-shaped keeps its guard; so does `@`.
+      const plusNote = '+cmd|x'
+      const byParent = await placeOne('by-parent', plusNote)
+      assert.equal((await post(parent.cookie, `/api/orders/${byParent.id}/cancel`, undefined)).status, 200)
+      const atReason = '@SUM(1,2) "now"'
+      const atOrder = await placeOne('at-reason')
+      assert.equal(
+        (await post(adminCookie, `/api/admin/orders/${atOrder.id}/cancel`, { expectedStatus: 'Order Is Placed', reason: atReason })).status,
+        200,
+      )
+
+      // After Place: rename the confirmed order's book and archive the cancelled order's book.
+      const renamed = `Renamed ${confirmed.bookTitle}`
+      await adminSend(`/api/admin/books/${confirmed.bookId}`, bookBody(renamed, 1500), 'PATCH', 200)
+      await adminSend(`/api/admin/books/${cancelled.bookId}/archive`, {}, 'POST', 200)
+
+      const before = readDb((db) => db.prepare('SELECT * FROM orders ORDER BY id').all())
+      const { entries } = await exportZip()
+
+      // orders.csv: one row per order by public number, snapshot values only.
+      const orders = csvOf(entries, 'orders.csv')
+      assert.deepEqual(orders[0], ORDERS_HEADER)
+      assert.equal(orders.length, 5)
+      const numbers = orders.slice(1).map((row) => Number(row[0].slice(1)))
+      assert.deepEqual(numbers, [...numbers].sort((a, b) => a - b))
+      const byNumber = new Map(orders.slice(1).map((row) => [row[0], row]))
+      for (const row of orders.slice(1)) {
+        assert.equal(row.length, ORDERS_HEADER.length)
+        assert.match(row[0], /^#\d+$/)
+        assert.match(row[1], COLOMBO_TIME)
+      }
+      const c = byNumber.get(`#${confirmed.publicNumber}`)
+      assert.ok(c)
+      assert.equal(c[2], 'Order Confirmed')
+      assert.match(c[3], /^Export main සුනිල්$/)
+      // Phone-shaped snapshots are written as is: no `'` guard.
+      assert.equal(c[4], '+94773333101')
+      assert.equal(c[5], '+94714444101')
+      assert.equal(c[6], '1 Lake Road, Maharagama')
+      assert.equal(c[7], '')
+      assert.deepEqual(c.slice(8, 11), ['1680', '350', '2030'])
+      assert.match(c[11], COLOMBO_TIME)
+      assert.deepEqual(c.slice(12), ['', '', ''])
+      const x = byNumber.get(`#${cancelled.publicNumber}`)
+      assert.ok(x)
+      assert.equal(x[2], 'Cancelled')
+      // The hostile note: a leading ' blocks the formula, and it parses back as one cell.
+      assert.equal(x[7], `'${hostileNote}`)
+      assert.deepEqual(x.slice(8, 11), ['1680', '', ''])
+      assert.equal(x[11], '')
+      assert.equal(x[12], 'Shop')
+      assert.equal(x[13], reason)
+      assert.match(x[14], COLOMBO_TIME)
+      const p = byNumber.get(`#${byParent.publicNumber}`)
+      assert.ok(p)
+      assert.equal(p[12], 'Parent')
+      assert.equal(p[13], '')
+      assert.equal(p[7], `'${plusNote}`)
+      const a = byNumber.get(`#${atOrder.publicNumber}`)
+      assert.ok(a)
+      assert.equal(a[12], 'Shop')
+      assert.equal(a[13], `'${atReason}`)
+      // Raw bytes: phones bare; guarded cells quoted only when they need it, with doubled quotes.
+      const ordersText = entries[0].data.toString('utf8')
+      assert.ok(ordersText.includes(`"'=HYPERLINK(""x""), ring twice\nපසුපස දොර · பின் கதவு"`))
+      assert.ok(ordersText.includes(',+94773333101,+94714444101,'))
+      assert.doesNotMatch(ordersText, /'\+94/)
+      assert.ok(ordersText.includes(`,'+cmd|x,`))
+      assert.ok(ordersText.includes(`,"'@SUM(1,2) ""now""",`))
+
+      // order-lines.csv: one row per pack book and per item, by order then position.
+      const lines = csvOf(entries, 'order-lines.csv')
+      assert.deepEqual(lines[0], LINES_HEADER)
+      const linesOf = (publicNumber: number) => lines.slice(1).filter((row) => row[0] === `#${publicNumber}`)
+      assert.deepEqual(linesOf(confirmed.publicNumber), [
+        [`#${confirmed.publicNumber}`, '1', 'Pack', confirmed.packName, linesOf(confirmed.publicNumber)[0][4], linesOf(confirmed.publicNumber)[0][5], confirmed.bookTitle, '1500', '1', '1500'],
+        [`#${confirmed.publicNumber}`, '2', 'Item', '', '', '', linesOf(confirmed.publicNumber)[1][6], '180', '1', '180'],
+      ])
+      assert.match(linesOf(confirmed.publicNumber)[1][6], /^Pencil /)
+      const lineOrders = lines.slice(1).map((row) => [Number(row[0].slice(1)), Number(row[1])])
+      assert.deepEqual(lineOrders, [...lineOrders].sort((a, b) => a[0] - b[0] || a[1] - b[1]))
+      const snapshotRow = readDb(
+        (db) =>
+          db
+            .prepare(
+              `SELECT l.label, l.grade_name FROM order_pack_lines l WHERE l.order_id = ?`,
+            )
+            .get(confirmed.id) as { label: string; grade_name: string },
+      )
+      assert.equal(linesOf(confirmed.publicNumber)[0][4], snapshotRow.grade_name)
+      assert.equal(linesOf(confirmed.publicNumber)[0][5], snapshotRow.label)
+
+      // Catalog CSVs come from live catalog: the new title, the archived book included.
+      const books = csvOf(entries, 'books.csv')
+      assert.deepEqual(books.find((row) => row[0] === String(confirmed.bookId)), [String(confirmed.bookId), renamed, '1500', 'No'])
+      assert.deepEqual(books.find((row) => row[0] === String(cancelled.bookId)), [String(cancelled.bookId), cancelled.bookTitle, '1500', 'Yes'])
+      assert.ok(!books.some((row) => row[1] === confirmed.bookTitle))
+      const packs = csvOf(entries, 'packs.csv')
+      const pack = packs.find((row) => row[1] === confirmed.packName)
+      assert.ok(pack)
+      assert.match(pack[2], /^Export school /)
+      assert.match(pack[3], /^Grade /)
+      assert.equal(pack[5], '1500')
+      assert.equal(pack[6], 'No')
+      assert.equal(pack[7], renamed)
+      const schools = csvOf(entries, 'schools.csv')
+      assert.ok(schools.slice(1).every((row) => row.length === 3 && /^\d+$/.test(row[0]) && /^(Yes|No)$/.test(row[2])))
+      assert.ok(csvOf(entries, 'items.csv').slice(1).some((row) => /^Pencil /.test(row[1]) && row[2] === 'Stationery' && row[3] === '180'))
+
+      // No secrets in the CSVs: they only live in the db copy.
+      for (const entry of entries.filter((candidate) => candidate.name.endsWith('.csv'))) {
+        assert.doesNotMatch(entry.data.toString('utf8'), /password|scrypt|evening-order|recovery|booklist\.sid/i, entry.name)
+      }
+
+      // booklist.db opens, is intact and has the same order rows; export wrote nothing.
+      const copied = await withDbCopy(entries, (db) => {
+        assert.equal(db.pragma('integrity_check', { simple: true }), 'ok')
+        return db.prepare('SELECT * FROM orders ORDER BY id').all()
+      })
+      assert.deepEqual(copied, before)
+      assert.deepEqual(readDb((db) => db.prepare('SELECT * FROM orders ORDER BY id').all()), before)
+    })
+
+    it('after a server restart the same orders export again (NFR10)', async () => {
+      const { entries: first } = await exportZip()
+      await stopChild(child)
+      child = (await startIdentityServer(dbPath, EXPORT_PORT)).child
+      adminCookie = await signInAdmin()
+      const { entries: second } = await exportZip()
+      assert.deepEqual(csvOf(second, 'orders.csv'), csvOf(first, 'orders.csv'))
+      assert.deepEqual(csvOf(second, 'order-lines.csv'), csvOf(first, 'order-lines.csv'))
+      assert.ok(csvOf(second, 'orders.csv').length > 1)
+    })
+
+    it('build throws: a closed handle throws, and the route maps a throw to export_failed', async () => {
+      const db = new Database(':memory:')
+      runMigrations(db)
+      const built = buildSeasonExport(db, new Date('2026-10-02T03:45:00.000Z'))
+      assert.equal(built.fileName, 'booklist-export-2026-10-02-0915.zip')
+      assert.deepEqual(unzip(built.zip).map((entry) => entry.name), ENTRY_NAMES)
+      // DOS stamps in every central and local header are the Asia/Colombo time of the instant.
+      const stamps = zipStamps(built.zip)
+      assert.equal(stamps.length, ENTRY_NAMES.length * 2)
+      assert.deepEqual(new Set(stamps), new Set(['2026-10-02 09:15:00']))
+      const lateUtc = buildSeasonExport(db, new Date('2026-12-31T20:31:07.000Z'))
+      assert.equal(lateUtc.fileName, 'booklist-export-2027-01-01-0201.zip')
+      assert.deepEqual(new Set(zipStamps(lateUtc.zip)), new Set(['2027-01-01 02:01:06']))
+
+      // The phone exemption: `+` then only digits and spaces (at least one digit) is bare.
+      const cells = toCsv(['v'], [['+94771234567'], ['+94 77 123 4567'], ['+'], ['+ '], ['+94-77'], ['+1e3'], ['-5'], ['@x'], ['\tx']])
+        .toString('utf8')
+        .split('\r\n')
+      assert.deepEqual(cells.slice(1, -1), ['+94771234567', '+94 77 123 4567', "'+", "'+ ", "'+94-77", "'+1e3", "'-5", "'@x", "'\tx"])
+      db.close()
+      assert.throws(() => buildSeasonExport(db, new Date()))
+
+      const adminHttp = (await readFile(path.join(serverRoot, 'orders', 'admin-http.ts'), 'utf8')).replace(/\r\n/g, '\n')
+      const at = adminHttp.indexOf("router.get(\n    '/admin/export'")
+      assert.ok(at >= 0, 'missing GET /admin/export')
+      const handler = adminHttp.slice(at, adminHttp.indexOf('return router', at))
+      assert.match(handler, /safe\(\(req, res\) => \{\s*res\.setHeader\('Cache-Control', 'no-store'\)\s*if \(!requireAdmin\(db, env, req, res, ADMIN_ORDERS_FORBIDDEN\)\) return/)
+      assert.match(
+        handler,
+        /try \{\s*built = buildSeasonExport\(db, new Date\(\)\)\s*\} catch \(error\) \{\s*console\.error\(error instanceof Error \? error\.message : error\)\s*sendError\(res, 500, 'export_failed', EXPORT_FAILED_MESSAGE\)\s*return\s*\}/,
+      )
+      assert.match(handler, /\.type\('application\/zip'\)/)
+      assert.match(handler, /Content-Disposition', `attachment; filename="\$\{built\.fileName\}"`/)
+      assert.match(adminHttp, new RegExp(`const EXPORT_FAILED_MESSAGE = '${EXPORT_FAILED}'`))
+    })
+
+    it('client fail / download: the export helper with a fake fetch, and a retry clears the error', async () => {
+      type Call = { input: string; init: RequestInit }
+      function harness(respond: () => Promise<Response>) {
+        const calls: Call[] = []
+        const downloads: Array<{ blob: Blob; fileName: string }> = []
+        let signOuts = 0
+        const deps = {
+          fetch: (input: string, init: RequestInit) => {
+            calls.push({ input, init })
+            return respond()
+          },
+          signOut: async () => {
+            signOuts += 1
+          },
+          download: (blob: Blob, fileName: string) => {
+            downloads.push({ blob, fileName })
+          },
+        }
+        return { deps, calls, downloads, signOuts: () => signOuts }
+      }
+      const zipBytes = Buffer.from('PK fake zip')
+
+      // 500: failed, nothing downloaded, no sign-out.
+      const failed = harness(async () =>
+        new Response(JSON.stringify({ error: { code: 'export_failed', message: EXPORT_FAILED } }), { status: 500 }),
+      )
+      assert.equal(await exportSeason(failed.deps), 'failed')
+      assert.deepEqual(failed.calls, [{ input: '/api/admin/export', init: { credentials: 'include' } }])
+      assert.equal(failed.downloads.length, 0)
+      assert.equal(failed.signOuts(), 0)
+
+      // 403 is also just a failure.
+      const forbidden = harness(async () => new Response('{}', { status: 403 }))
+      assert.equal(await exportSeason(forbidden.deps), 'failed')
+      assert.equal(forbidden.downloads.length, 0)
+
+      // A network error: failed, nothing downloaded.
+      const offline = harness(async () => {
+        throw new TypeError('Failed to fetch')
+      })
+      assert.equal(await exportSeason(offline.deps), 'failed')
+      assert.equal(offline.downloads.length, 0)
+      assert.equal(offline.signOuts(), 0)
+
+      // 401: sign out, nothing downloaded.
+      const lost = harness(async () => new Response('{}', { status: 401 }))
+      assert.equal(await exportSeason(lost.deps), 'signed-out')
+      assert.equal(lost.signOuts(), 1)
+      assert.equal(lost.downloads.length, 0)
+
+      // 200: one download with the server's file name and the zip bytes.
+      const ok = harness(async () =>
+        new Response(zipBytes, {
+          status: 200,
+          headers: {
+            'content-type': 'application/zip',
+            'content-disposition': 'attachment; filename="booklist-export-2026-10-02-0915.zip"',
+          },
+        }),
+      )
+      assert.equal(await exportSeason(ok.deps), 'downloaded')
+      assert.equal(ok.downloads.length, 1)
+      assert.equal(ok.downloads[0].fileName, 'booklist-export-2026-10-02-0915.zip')
+      assert.deepEqual(Buffer.from(await ok.downloads[0].blob.arrayBuffer()), zipBytes)
+      assert.equal(ok.signOuts(), 0)
+
+      // A 2xx that is not a zip: failed, nothing downloaded.
+      for (const contentType of ['text/html; charset=utf-8', 'application/json', null]) {
+        const notZip = harness(async () =>
+          new Response(zipBytes, { status: 200, headers: contentType ? { 'content-type': contentType } : {} }),
+        )
+        if (contentType === null) assert.equal((await notZip.deps.fetch('/x', {})).headers.get('content-type'), null)
+        assert.equal(await exportSeason(notZip.deps), 'failed', String(contentType))
+        assert.equal(notZip.downloads.length, 0)
+        assert.equal(notZip.signOuts(), 0)
+      }
+
+      // 200 without the disposition header: the fallback name.
+      const unnamed = harness(async () => new Response(zipBytes, { status: 200, headers: { 'content-type': 'application/zip' } }))
+      assert.equal(await exportSeason(unnamed.deps), 'downloaded')
+      assert.deepEqual(unnamed.downloads.map((entry) => entry.fileName), [EXPORT_FALLBACK_NAME])
+      assert.equal(EXPORT_FALLBACK_NAME, 'booklist-export.zip')
+      assert.equal(attachmentName(null), 'booklist-export.zip')
+
+      // A download that throws is a failure too.
+      const broken = harness(async () => new Response(zipBytes, { status: 200, headers: { 'content-type': 'application/zip' } }))
+      broken.deps.download = () => {
+        throw new Error('blocked')
+      }
+      assert.equal(await exportSeason(broken.deps), 'failed')
+
+      // The Shell's error rule: set only on failure, and cleared when the next attempt starts.
+      assert.equal(CLIENT_EXPORT_FAILED, EXPORT_FAILED)
+      let shown = exportErrorFor(await exportSeason(failed.deps))
+      assert.equal(shown, EXPORT_FAILED)
+      shown = exportErrorFor('start')
+      assert.equal(shown, '')
+      shown = exportErrorFor(await exportSeason(ok.deps))
+      assert.equal(shown, '')
+      assert.equal(exportErrorFor('signed-out'), '')
+    })
+
+    it('source: catalog through its functions, a hand-rolled zip, an Export button, token-only styles', async () => {
+      const read = (...parts: string[]) => readFile(path.join(...parts), 'utf8')
+      const ordersDir = path.join(serverRoot, 'orders')
+      const exportSource = await read(ordersDir, 'export.ts')
+      const zipSource = await read(ordersDir, 'zip.ts')
+      const adminHttp = await read(ordersDir, 'admin-http.ts')
+      const shell = await read(repoRoot, 'client', 'admin', 'src', 'Shell.tsx')
+      const exportHelper = await read(repoRoot, 'client', 'admin', 'src', 'exportSeason.ts')
+      const adminApp = await readFile(adminAppPath, 'utf8')
+      const baseCss = await readFile(baseCssPath, 'utf8')
+
+      // Server: catalog only through its TS functions; orders tables only; no writes; no SQL in the router.
+      assert.match(exportSource, /import \{ listBooks \} from '\.\.\/catalog\/books\.js'/)
+      assert.match(exportSource, /import \{ listItems \} from '\.\.\/catalog\/items\.js'/)
+      assert.match(exportSource, /import \{ listNamed, type NamedRow \} from '\.\.\/catalog\/named\.js'/)
+      assert.match(exportSource, /import \{ listPacks \} from '\.\.\/catalog\/packs\.js'/)
+      assert.match(exportSource, /listNamed\(db, 'school'\)/)
+      assert.match(exportSource, /listNamed\(db, 'grade'\)/)
+      assert.doesNotMatch(exportSource, /(FROM|JOIN|INTO|UPDATE)\s+(cart_\w+|packs|books|grades|schools|items|pack_books|parents|admins|sessions)\b/i)
+      assert.doesNotMatch(exportSource, /\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER)\b|\.exec\(|\.run\(/)
+      assert.match(exportSource, /db\.serialize\(\)/)
+      assert.match(exportSource, /db\.transaction\(/)
+      assert.doesNotMatch(exportSource, /DATABASE_PATH|copyFile|writeFile/)
+      assert.doesNotMatch(adminHttp, /db\.prepare/)
+      assert.match(zipSource, /import \{ crc32, deflateRawSync \} from 'node:zlib'/)
+      assert.doesNotMatch(zipSource, /^import (?!.*'node:)/m)
+      // No Zip64 end records or locators, and no streaming data descriptors.
+      assert.doesNotMatch(zipSource, /0x06064b50|0x07064b50|0x08074b50|Stream|pipe\(/)
+      for (const pkg of [path.join(repoRoot, 'package.json'), path.join(serverRoot, 'package.json')]) {
+        assert.doesNotMatch(await readFile(pkg, 'utf8'), /zip|archiver|yazl|jszip|adm-zip/i, pkg)
+      }
+
+      // Client: an Export button, not a link; fetch → blob → a temporary download link.
+      assert.doesNotMatch(adminApp, /path="export"/)
+      assert.doesNotMatch(shell, /to="\/export"/)
+      assert.match(shell, /className="nav-item admin-export-button"/)
+      assert.match(shell, /aria-busy=\{exporting\}/)
+      assert.match(shell, /aria-label=\{exporting \? 'Exporting' : undefined\}/)
+      assert.match(shell, /if \(exportingRef\.current\) return/)
+      assert.match(shell, /\{exporting \? <span className="spinner-disc is-inline" aria-hidden="true" \/> : 'Export'\}/)
+      // Shell owns the state; the flow lives in exportSeason.ts with the real fetch, signOut and download.
+      assert.match(shell, /import \{ downloadBlob, exportErrorFor, exportSeason \} from '\.\/exportSeason'/)
+      assert.match(shell, /setExporting\(true\)\s*setExportError\(exportErrorFor\('start'\)\)/)
+      assert.match(shell, /const outcome = await exportSeason\(\{ fetch: \(input, init\) => fetch\(input, init\), signOut, download: downloadBlob \}\)\s*setExportError\(exportErrorFor\(outcome\)\)/)
+      assert.match(shell, /finally \{\s*exportingRef\.current = false\s*setExporting\(false\)/)
+      assert.doesNotMatch(shell, /\.blob\(\)|createObjectURL|'\/api\/admin\/export'/)
+      assert.match(shell, /<p className="form-error text-meta admin-export-error" role="alert">\s*\{exportError\}/)
+      assert.doesNotMatch(shell, /localStorage|sessionStorage|indexedDB|role="dialog"|toast/i)
+      // The download link: a temporary object URL, revoked only after a delay, never synchronously.
+      assert.match(exportHelper, /URL\.createObjectURL\(blob\)/)
+      assert.match(exportHelper, /link\.click\(\)\s*link\.remove\(\)/)
+      assert.match(exportHelper, /setTimeout\(\(\) => URL\.revokeObjectURL\(url\), REVOKE_DELAY_MS\)/)
+      assert.equal((exportHelper.match(/revokeObjectURL/g) ?? []).length, 1)
+      assert.doesNotMatch(exportHelper, /localStorage|sessionStorage|indexedDB/)
+      assert.match(exportHelper, /response\.headers\.get\('Content-Type'\)[^\n]*includes\('application\/zip'\)\) return 'failed'/)
+      // The BOM is written as an escape, never as an invisible literal.
+      assert.match(exportSource, /`\\uFEFF\$\{lines\.join\('\\r\\n'\)\}\\r\\n`/)
+      assert.doesNotMatch(exportSource, /\uFEFF/)
+      assert.match(exportSource, /const PHONE_SHAPED = /)
+
+      // Styles: an icon-sized inline spinner on tokens only; reduced motion still stops it.
+      const rules = [...baseCss.matchAll(/(?:^|\n)[ \t]*([^{}\n]*(?:\.spinner-disc\.is-inline|\.admin-export-)[^{}]*)\{([^}]*)\}/g)]
+      assert.ok(rules.length >= 4, `4.7 rules are missing (${rules.length})`)
+      for (const [, selector, body] of rules) {
+        assert.doesNotMatch(body, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(?:white|black)(?![\w-])/, `${selector.trim()} uses a raw colour`)
+        assert.doesNotMatch(body, /\d+px|\d+ms/, `${selector.trim()} uses a raw size`)
+        for (const color of body.matchAll(/(?:color|background|border[\w-]*|outline):\s*([^;]+);/g)) {
+          assert.match(color[1], /var\(--|none|^0$|^0 /, `${selector.trim()} ${color[0]}`)
+        }
+      }
+      assert.match(cssRule(baseCss, '.spinner-disc.is-inline'), /width: var\(--space-4\);\s*height: var\(--space-4\);/)
+      assert.match(baseCss, /@media \(prefers-reduced-motion: reduce\) \{\s*\*,\s*\*::before,\s*\*::after \{\s*animation: none !important;/)
     })
   })
 })
